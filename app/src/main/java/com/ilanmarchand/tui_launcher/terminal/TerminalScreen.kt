@@ -27,7 +27,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -53,6 +55,9 @@ import com.ilanmarchand.tui_launcher.ui.theme.Accent2
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalBackground
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalForeground
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val PROMPT = "Boudbois@phone: >"
@@ -75,6 +80,7 @@ fun TerminalScreen() {
     var input by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -86,26 +92,25 @@ fun TerminalScreen() {
         history += TerminalLine.Command(name)
         if (name.isEmpty()) return
 
-        val loaded = apps
-        if (loaded == null) {
-            history += TerminalLine.Output("apps are still loading, try again", isError = true)
-            return
-        }
-        // Temporary: lists every launchable app's label, to check the names to type
-        if (name.equals("help launch", ignoreCase = true)) {
-            history += TerminalLine.Output("apps you can launch:")
-            loaded.forEach { history += TerminalLine.Output(it.label) }
-            return
-        }
-        val app = loaded.findByName(name)
-        if (app == null) {
-            history += TerminalLine.Output("command not found: $name", isError = true)
-            return
-        }
-        try {
-            app.launch(context)
-        } catch (e: ActivityNotFoundException) {
-            history += TerminalLine.Output("could not open $name", isError = true)
+        // Waits for the app list if it is still loading, so a command is never refused
+        scope.launch {
+            val loaded = snapshotFlow { apps }.filterNotNull().first()
+            // Temporary: lists every launchable app's label, to check the names to type
+            if (name.equals("help launch", ignoreCase = true)) {
+                history += TerminalLine.Output("apps you can launch:")
+                loaded.forEach { history += TerminalLine.Output(it.label) }
+                return@launch
+            }
+            val app = loaded.findByName(name)
+            if (app == null) {
+                history += TerminalLine.Output("command not found: $name", isError = true)
+                return@launch
+            }
+            try {
+                app.launch(context)
+            } catch (e: ActivityNotFoundException) {
+                history += TerminalLine.Output("could not open $name", isError = true)
+            }
         }
     }
 
