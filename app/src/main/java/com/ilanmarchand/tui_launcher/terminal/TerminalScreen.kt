@@ -59,7 +59,7 @@ private const val PROMPT = "Boudbois@phone: >"
 
 private sealed interface TerminalLine {
     data class Command(val input: String) : TerminalLine
-    data class Output(val text: String, val isError: Boolean) : TerminalLine
+    data class Output(val text: String, val isError: Boolean = false) : TerminalLine
 }
 
 @Composable
@@ -89,6 +89,12 @@ fun TerminalScreen() {
         val loaded = apps
         if (loaded == null) {
             history += TerminalLine.Output("apps are still loading, try again", isError = true)
+            return
+        }
+        // Temporary: lists every launchable app's label, to check the names to type
+        if (name.equals("help launch", ignoreCase = true)) {
+            history += TerminalLine.Output("apps you can launch:")
+            loaded.forEach { history += TerminalLine.Output(it.label) }
             return
         }
         val app = loaded.findByName(name)
