@@ -50,6 +50,7 @@ import com.ilanmarchand.tui_launcher.apps.LaunchableApp
 import com.ilanmarchand.tui_launcher.apps.findByName
 import com.ilanmarchand.tui_launcher.apps.launch
 import com.ilanmarchand.tui_launcher.apps.loadLaunchableApps
+import com.ilanmarchand.tui_launcher.log.appendToCommandLog
 import com.ilanmarchand.tui_launcher.ui.theme.Accent1
 import com.ilanmarchand.tui_launcher.ui.theme.Accent2
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalBackground
@@ -94,6 +95,12 @@ fun TerminalScreen() {
 
         // Waits for the app list if it is still loading, so a command is never refused
         scope.launch {
+            val logged = withContext(Dispatchers.IO) {
+                runCatching { appendToCommandLog(context, name) }
+            }
+            if (logged.isFailure) {
+                history += TerminalLine.Output("could not write the log", isError = true)
+            }
             val loaded = snapshotFlow { apps }.filterNotNull().first()
             // Temporary: lists every launchable app's label, to check the names to type
             if (name.equals("help launch", ignoreCase = true)) {
