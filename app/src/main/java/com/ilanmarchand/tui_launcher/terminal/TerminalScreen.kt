@@ -2,6 +2,10 @@ package com.ilanmarchand.tui_launcher.terminal
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.pm.LauncherApps
+import android.os.Handler
+import android.os.Looper
+import android.os.UserHandle
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import androidx.activity.compose.BackHandler
@@ -23,11 +27,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -84,6 +88,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private sealed interface TerminalLine {
@@ -98,14 +104,34 @@ fun TerminalScreen() {
     BackHandler {}
 
     val context = LocalContext.current
-    val apps by produceState<List<LaunchableApp>?>(initialValue = null) {
-        value = withContext(Dispatchers.IO) { loadLaunchableApps(context) }
+    val scope = rememberCoroutineScope()
+    var apps by remember { mutableStateOf<List<LaunchableApp>?>(null) }
+    LaunchedEffect(Unit) {
+        apps = withContext(Dispatchers.IO) { loadLaunchableApps(context) }
+    }
+    // Like any launcher, follow apps being installed, removed or updated (pacman -R, the Play Store…)
+    DisposableEffect(Unit) {
+        val launcherApps = context.getSystemService(LauncherApps::class.java)
+        val callback = object : LauncherApps.Callback() {
+            fun reload() {
+                scope.launch { apps = withContext(Dispatchers.IO) { loadLaunchableApps(context) } }
+            }
+
+            override fun onPackageRemoved(packageName: String, user: UserHandle) = reload()
+            override fun onPackageAdded(packageName: String, user: UserHandle) = reload()
+            override fun onPackageChanged(packageName: String, user: UserHandle) = reload()
+            override fun onPackagesAvailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) = reload()
+            override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) = reload()
+        }
+        launcherApps.registerCallback(callback, Handler(Looper.getMainLooper()))
+        onDispose { launcherApps.unregisterCallback(callback) }
     }
     val history = remember { mutableStateListOf<TerminalLine>() }
     var input by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val scope = rememberCoroutineScope()
+    // Lines run one after another, as in bash, even when typed while a command is still running
+    val running = remember { Mutex() }
     // A question a command asked; the next typed line answers it
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
 
@@ -124,55 +150,58 @@ fun TerminalScreen() {
         }
     }
 
+    // Runs a typed line: history expansion, logging, parsing, then the commands
+    suspend fun runLine(name: String) {
+        // Like bash, !! and the other history events are expanded first, and the expanded line is the one
+        // echoed, logged and run, so the log stays a usable history
+        val past = withContext(Dispatchers.IO) {
+            runCatching { readCommandHistory(context) }.getOrDefault(emptyList())
+        }
+        val expansion = expandHistory(name, past)
+        val line = (expansion as? HistoryExpansion.Expanded)?.line ?: name
+        val logged = withContext(Dispatchers.IO) {
+            runCatching { appendToCommandLog(context, line) }
+        }
+        if (logged.isFailure) {
+            history += TerminalLine.Output("could not write the log", isError = true)
+        }
+        when (expansion) {
+            is HistoryExpansion.Failed -> {
+                history += TerminalLine.Output(expansion.message, isError = true)
+                return
+            }
+            is HistoryExpansion.Expanded -> if (expansion.changed) history += TerminalLine.Output(line)
+        }
+        when (val parsed = parseCommandLine(line)) {
+            is ParseResult.SyntaxError -> history += TerminalLine.Output(parsed.message, isError = true)
+            is ParseResult.Parsed -> withContext(Dispatchers.IO) {
+                // Aliases are read once per line, so one defined on a line applies from the next line, as in bash
+                val aliases = AliasStore(context).all()
+                val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
+                val files = WorkspaceRedirects(CurrentWorkspace.get(context))
+                runCommandList(parsed.items, { expandAliases(it, aliases) }, runner, files) { show(it) }
+            }
+        }
+    }
+
     fun submit(line: String) {
         val name = line.trim()
         question?.let { asked ->
             question = null
             history += TerminalLine.Command(name, asked.question)
             scope.launch {
-                // Like every submitted line, the answer is logged
-                withContext(Dispatchers.IO) { runCatching { appendToCommandLog(context, name) } }
-                val result = withContext(Dispatchers.IO) { asked.answer(name) }
-                showResult(result) { show(it) }
+                running.withLock {
+                    // Like every submitted line, the answer is logged
+                    withContext(Dispatchers.IO) { runCatching { appendToCommandLog(context, name) } }
+                    val result = withContext(Dispatchers.IO) { asked.answer(name) }
+                    showResult(result) { show(it) }
+                }
             }
             return
         }
         history += TerminalLine.Command(name)
         if (name.isEmpty()) return
-
-        scope.launch {
-            // Like bash, !! and the other history events are expanded first, and the expanded line is the
-            // one echoed, logged and run, so the log stays a usable history
-            val past = withContext(Dispatchers.IO) {
-                runCatching { readCommandHistory(context) }.getOrDefault(emptyList())
-            }
-            val expansion = expandHistory(name, past)
-            val line = (expansion as? HistoryExpansion.Expanded)?.line ?: name
-            val logged = withContext(Dispatchers.IO) {
-                runCatching { appendToCommandLog(context, line) }
-            }
-            if (logged.isFailure) {
-                history += TerminalLine.Output("could not write the log", isError = true)
-            }
-            when (expansion) {
-                is HistoryExpansion.Failed -> {
-                    history += TerminalLine.Output(expansion.message, isError = true)
-                    return@launch
-                }
-                is HistoryExpansion.Expanded -> if (expansion.changed) history += TerminalLine.Output(line)
-            }
-            when (val parsed = parseCommandLine(line)) {
-                is ParseResult.SyntaxError -> history += TerminalLine.Output(parsed.message, isError = true)
-                is ParseResult.Parsed -> withContext(Dispatchers.IO) {
-                    // Aliases are read once per line, so one defined on a line applies from the next line,
-                    // as in bash
-                    val aliases = AliasStore(context).all()
-                    val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
-                    val files = WorkspaceRedirects(CurrentWorkspace.get(context))
-                    runCommandList(parsed.items, { expandAliases(it, aliases) }, runner, files) { show(it) }
-                }
-            }
-        }
+        scope.launch { running.withLock { runLine(name) } }
     }
 
     Column(
