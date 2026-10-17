@@ -1,6 +1,8 @@
 package com.ilanmarchand.tui_launcher.terminal
 
 import android.content.ActivityNotFoundException
+import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,13 +32,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
@@ -162,25 +167,50 @@ fun TerminalScreen() {
         }
         Row(modifier = Modifier.fillMaxWidth()) {
             Text(text = "$PROMPT ", color = Accent1)
-            BasicTextField(
-                value = input,
-                onValueChange = { input = it },
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
-                cursorBrush = SolidColor(Color.Transparent),
-                visualTransformation = BlockCursor,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(onDone = { submit() })
-            )
+            TerminalKeyboard {
+                BasicTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
+                    cursorBrush = SolidColor(Color.Transparent),
+                    visualTransformation = BlockCursor,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() })
+                )
+            }
         }
     }
+}
+
+// Tells the keyboard this is a terminal, the way Termux does: a visible-password field with no
+// suggestions, which keyboards such as Gboard never autocorrect (they ignore autoCorrectEnabled = false
+// on a plain text field). The keyboard is also asked not to learn what is typed, such as Wi-Fi passwords.
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun TerminalKeyboard(content: @Composable () -> Unit) {
+    InterceptPlatformTextInput(
+        interceptor = { request, nextHandler ->
+            val terminalRequest = PlatformTextInputMethodRequest { outAttributes ->
+                request.createInputConnection(outAttributes).also {
+                    outAttributes.inputType = InputType.TYPE_CLASS_TEXT or
+                        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
+                        InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                    outAttributes.imeOptions = outAttributes.imeOptions or
+                        EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+                }
+            }
+            nextHandler.startInputMethod(terminalRequest)
+        },
+        content = content
+    )
 }
 
 @Composable
