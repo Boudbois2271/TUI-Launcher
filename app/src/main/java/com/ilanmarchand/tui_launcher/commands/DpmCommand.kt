@@ -47,6 +47,8 @@ object DpmCommand : BuiltinCommand {
         if (!dpm.isAdminActive(ours)) return error("Error: $ours is not an active admin")
         return try {
             if (dpm.isDeviceOwnerApp(context.packageName)) {
+                // Give the home screen choice back first, so another launcher can be picked again
+                dpm.clearPackagePersistentPreferredActivities(ours, context.packageName)
                 // Deprecated, but still the way for a device owner to step down by itself
                 @Suppress("DEPRECATION")
                 dpm.clearDeviceOwnerApp(context.packageName)
