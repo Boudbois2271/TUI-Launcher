@@ -9,6 +9,8 @@ import com.ilanmarchand.tui_launcher.accessibility.LockService
 // service is off. The other loginctl verbs don't exist on Android.
 object LoginctlCommand : BuiltinCommand {
     override val name = "loginctl"
+    override val synopsis = "loginctl lock-session"
+    override val summary = "Lock the screen."
     override val takesArgs = true
 
     private val VERBS = listOf(

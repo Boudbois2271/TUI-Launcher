@@ -3,6 +3,9 @@ package com.ilanmarchand.tui_launcher.commands
 // GNU uniq: uniq [-cdui]  Folds runs of the same line into one. -c counts them, -d keeps only repeated lines,
 // -u only lines that don't repeat, -i ignores case. Like uniq, only neighbors count: sort first.
 object UniqCommand : TextTool("uniq") {
+    override val synopsis = "uniq [-cdui]"
+    override val summary = "Filter adjacent matching lines."
+
     override fun process(words: List<String>, input: List<String>) = uniq(words, input)
 }
 

@@ -2,6 +2,9 @@ package com.ilanmarchand.tui_launcher.commands
 
 // GNU tail: tail [-n [+]NUM] [-NUM]  The last 10 lines by default; -n +NUM starts at line NUM.
 object TailCommand : TextTool("tail") {
+    override val synopsis = "tail [-n [+]NUM]"
+    override val summary = "Print the last 10 lines of the input."
+
     override fun process(words: List<String>, input: List<String>) = tail(words, input)
 }
 

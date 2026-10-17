@@ -215,12 +215,14 @@ private suspend fun runCommand(
     command: String,
     stdin: List<String>?
 ): CommandResult {
-    findBuiltinCommand(command)?.let { return it.command.run(context, it.args, stdin) }
-    val loaded = snapshotFlow(apps).filterNotNull().first()
-    // Temporary: lists every launchable app's label, to check the names to type
+    // Temporary: lists every launchable app's label, to check the names to type. Checked before the
+    // built-ins, since `help` is one.
     if (command.equals("help launch", ignoreCase = true)) {
+        val loaded = snapshotFlow(apps).filterNotNull().first()
         return CommandResult.Output((listOf("apps you can launch:") + loaded.map { it.label }).map { OutputLine(it) })
     }
+    findBuiltinCommand(command)?.let { return it.command.run(context, it.args, stdin) }
+    val loaded = snapshotFlow(apps).filterNotNull().first()
     // A label with a shell character, such as "Red & moi", is typed in quotes
     val app = loaded.findByName(command)
         ?: splitShellWords(command)?.joinToString(" ")?.let { loaded.findByName(it) }

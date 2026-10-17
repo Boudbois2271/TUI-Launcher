@@ -14,6 +14,8 @@ import com.ilanmarchand.tui_launcher.contacts.readContactNumbers
 // Google account.
 object ContactsCommand : BuiltinCommand {
     override val name = "contacts"
+    override val synopsis = "contacts list | add NAME NUMBER"
+    override val summary = "List the address book or add a contact. Alone, opens the Contacts app."
     override val takesArgs = true
     override val needsArgs = true
 

@@ -3,6 +3,9 @@ package com.ilanmarchand.tui_launcher.commands
 // GNU wc: wc [-lwmc]  Lines, words, characters and bytes, in that order; lines, words and bytes by default.
 // One count prints bare; several are padded to 7 columns, as GNU wc does for piped input.
 object WcCommand : TextTool("wc") {
+    override val synopsis = "wc [-lwmc]"
+    override val summary = "Print newline, word, and byte counts."
+
     override fun process(words: List<String>, input: List<String>) = wc(words, input)
 }
 

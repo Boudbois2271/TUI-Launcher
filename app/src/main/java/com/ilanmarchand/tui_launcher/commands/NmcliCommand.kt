@@ -18,6 +18,8 @@ import com.ilanmarchand.tui_launcher.admin.grantOwnPermission
 // Since Android 10, only a device owner may switch Wi-Fi or add networks.
 object NmcliCommand : BuiltinCommand {
     override val name = "nmcli"
+    override val synopsis = "nmcli radio wifi [on | off] | device wifi [list | connect <SSID> [password <pw>]]"
+    override val summary = "Switch Wi-Fi, list networks and join one, like NetworkManager's nmcli."
     override val takesArgs = true
 
     // Android names its Wi-Fi interface wlan0

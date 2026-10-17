@@ -6,6 +6,9 @@ import java.util.Locale
 // GNU sort: sort [-rnuf]  Lines in dictionary order (digits, then letters, lowercase before uppercase, as
 // GNU sort does in a regular locale), -n by leading number, -r reversed, -u without repeats, -f ignoring case.
 object SortCommand : TextTool("sort") {
+    override val synopsis = "sort [-rnuf]"
+    override val summary = "Write sorted lines."
+
     override fun process(words: List<String>, input: List<String>) = sort(words, input)
 }
 

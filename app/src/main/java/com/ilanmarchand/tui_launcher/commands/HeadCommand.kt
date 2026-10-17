@@ -2,6 +2,9 @@ package com.ilanmarchand.tui_launcher.commands
 
 // GNU head: head [-n [-]NUM] [-NUM]  The first 10 lines by default; -n -NUM keeps all but the last NUM.
 object HeadCommand : TextTool("head") {
+    override val synopsis = "head [-n [-]NUM]"
+    override val summary = "Print the first 10 lines of the input."
+
     override fun process(words: List<String>, input: List<String>) = head(words, input)
 }
 

@@ -14,6 +14,8 @@ import kotlin.math.roundToInt
 // owner's setSystemSetting, so no "Modify system settings" permission is needed. Texts follow brightnessctl.
 object BrightnessctlCommand : BuiltinCommand {
     override val name = "brightnessctl"
+    override val synopsis = "brightnessctl [-q] [-p] [info | get | max | set VALUE]"
+    override val summary = "Read or change the screen brightness."
     override val takesArgs = true
 
     // MediaTek phones name their screen backlight this way in /sys/class/leds

@@ -23,6 +23,10 @@ data class OutputLine(val text: String, val isError: Boolean = false)
 interface BuiltinCommand {
     val name: String
 
+    // For `help`: how to call it, like bash's help list, and what it does in one line
+    val synopsis: String
+    val summary: String
+
     // A command that takes arguments matches its name followed by a space, and gets the rest of the line.
     // Other commands match only their name, so extra words make the line unknown.
     val takesArgs: Boolean
@@ -63,7 +67,10 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     TailCommand,
     WcCommand,
     SortCommand,
-    UniqCommand
+    UniqCommand,
+    HelpCommand,
+    TypeCommand,
+    CompgenCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

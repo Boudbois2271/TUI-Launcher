@@ -5,6 +5,9 @@ import java.util.regex.PatternSyntaxException
 // GNU grep: grep [-ivcnEFGwxq] [-e PATTERN]... PATTERN
 // Exits 0 when a line is selected, 1 when none is, 2 on an error, as grep does. Texts follow GNU grep.
 object GrepCommand : TextTool("grep") {
+    override val synopsis = "grep [-ivcnEFGwxq] [-e PATTERN]... PATTERN"
+    override val summary = "Print lines that match patterns."
+
     override fun process(words: List<String>, input: List<String>) = grep(words, input)
 }
 
