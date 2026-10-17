@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">TUI-Launcher</string>
+    <string name="lock_service_label">TUI-Launcher screen lock</string>
+    <string name="lock_service_description">Lets loginctl lock-session lock the screen like the power button, so face unlock keeps working. It only locks the screen and reads nothing on it.</string>
 </resources>

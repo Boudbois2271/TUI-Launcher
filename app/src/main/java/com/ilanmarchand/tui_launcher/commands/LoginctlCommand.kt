@@ -2,9 +2,11 @@ package com.ilanmarchand.tui_launcher.commands
 
 import android.app.admin.DevicePolicyManager
 import android.content.Context
+import com.ilanmarchand.tui_launcher.accessibility.LockService
 
 // systemd's loginctl, for locking the screen: `loginctl lock-session` (or `lock-sessions`) locks the phone
-// now, through the device admin's force-lock policy. The other loginctl verbs don't exist on Android.
+// now, through the launcher's accessibility service, or the device admin's force-lock policy when that
+// service is off. The other loginctl verbs don't exist on Android.
 object LoginctlCommand : BuiltinCommand {
     override val name = "loginctl"
     override val takesArgs = true
@@ -27,10 +29,17 @@ object LoginctlCommand : BuiltinCommand {
         }
         // The phone has a single session, so no session id is taken
         if (words.size > 1) return error("Too many arguments.")
+        // Like the power button, so face unlock keeps working
+        if (LockService.lockScreen()) return CommandResult.Output(emptyList())
+        // Without the accessibility service, the device admin lock still locks, but Android then asks for
+        // the PIN at the next unlock
         val dpm = context.getSystemService(DevicePolicyManager::class.java)
         return try {
             dpm.lockNow()
-            CommandResult.Output(emptyList())
+            error(
+                "Locked by the device admin, so the next unlock needs the PIN. " +
+                    "Turn on \"TUI-Launcher screen lock\" in the Accessibility settings to keep face unlock."
+            )
         } catch (e: SecurityException) {
             error("Failed to lock session: Access denied")
         }
