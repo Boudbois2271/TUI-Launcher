@@ -9,7 +9,7 @@ private const val LOG_FILE_NAME = "terminal-log.txt"
 private val TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
 // The file is in the app's external files folder, so it can be pulled over adb without any storage permission
-private fun commandLogFile(context: Context): File {
+fun commandLogFile(context: Context): File {
     val folder = context.getExternalFilesDir(null) ?: context.filesDir
     return File(folder, LOG_FILE_NAME)
 }

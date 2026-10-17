@@ -101,7 +101,16 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     XdgOpenCommand,
     HistoryCommand,
     SudoCommand,
-    PacmanCommand
+    PacmanCommand,
+    PwdCommand,
+    CdCommand,
+    LsCommand,
+    CatCommand,
+    MkdirCommand,
+    RmCommand,
+    TouchCommand,
+    MvCommand,
+    CpCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {
