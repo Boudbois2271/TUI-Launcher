@@ -22,7 +22,7 @@ fun interface CommandRunner {
 }
 
 // The files redirections read and write. A failure throws RedirectException with bash's message, such as
-// "notes: Is a directory".
+// "notes: Is a directory"; the shell shows it after "bash: ", as bash does.
 interface RedirectFiles {
     fun read(target: String): List<String>
     fun write(target: String, lines: List<String>, append: Boolean)
@@ -46,9 +46,11 @@ suspend fun runCommandList(
     expand: Expander,
     runner: CommandRunner,
     files: RedirectFiles,
+    // $? when the line starts: the previous line's status
+    lastStatus: Int = 0,
     emit: suspend (ShellEffect) -> Unit
 ): Int {
-    var status = 0
+    var status = lastStatus
     for (item in items) {
         val runs = when (item.connector) {
             null, Connector.THEN -> true
@@ -127,7 +129,7 @@ private fun prepareRedirects(redirects: List<Redirect>, files: RedirectFiles): P
             }
         }
     } catch (e: RedirectException) {
-        return Prepared.Failed(CommandResult.Output(listOf(OutputLine(e.message.orEmpty(), isError = true))))
+        return Prepared.Failed(CommandResult.Output(listOf(OutputLine("bash: ${e.message}", isError = true))))
     }
     return Prepared.Ready(input)
 }
@@ -146,7 +148,7 @@ private fun writeRedirects(result: CommandResult, redirects: List<Redirect>, fil
         val kept = lines.filter { (it.isError && errors == null) || (!it.isError && output == null) }
         CommandResult.Output(kept, exitCode)
     } catch (e: RedirectException) {
-        CommandResult.Output(listOf(OutputLine(e.message.orEmpty(), isError = true)))
+        CommandResult.Output(listOf(OutputLine("bash: ${e.message}", isError = true)))
     }
 }
 

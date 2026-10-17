@@ -42,6 +42,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -146,6 +153,11 @@ fun TerminalScreen() {
     // Lines running or waiting their turn. Back interrupts them, as Ctrl+C would in a terminal.
     val jobs = remember { mutableStateListOf<Job>() }
     BackHandler(enabled = jobs.isNotEmpty()) { jobs.toList().forEach { it.cancel() } }
+    val interruptOnBack: (KeyEvent) -> Boolean = { event ->
+        val interrupts = event.key == Key.Back && jobs.isNotEmpty()
+        if (interrupts && event.type == KeyEventType.KeyUp) jobs.toList().forEach { it.cancel() }
+        interrupts
+    }
     val variables = ShellVariables.variables
     // A question a command asked; the next typed line answers it
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
@@ -186,14 +198,14 @@ fun TerminalScreen() {
         }
         when (expansion) {
             is HistoryExpansion.Failed -> {
-                history += TerminalLine.Output(expansion.message, isError = true)
+                history += TerminalLine.Output("bash: ${expansion.message}", isError = true)
                 return
             }
             is HistoryExpansion.Expanded -> if (expansion.changed) history += TerminalLine.Output(line)
         }
         when (val parsed = parseCommandLine(line)) {
             is ParseResult.SyntaxError -> {
-                history += TerminalLine.Output(parsed.message, isError = true)
+                history += TerminalLine.Output("bash: ${parsed.message}", isError = true)
                 // bash's status for a syntax error
                 variables.lastStatus = 2
             }
@@ -216,7 +228,7 @@ fun TerminalScreen() {
                 }
                 val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
                 variables.lastStatus =
-                    runCommandList(parsed.items, expander, runner, WorkspaceRedirects(workspace)) { show(it) }
+                    runCommandList(parsed.items, expander, runner, WorkspaceRedirects(workspace), variables.lastStatus) { show(it) }
             }
         }
     }
@@ -271,6 +283,11 @@ fun TerminalScreen() {
 
     Column(
         modifier = Modifier
+            // Back interrupts a running command with one press, like Ctrl+C. It is caught before the
+            // keyboard, which would only hide itself, and before the prompt's text field, which would drop
+            // its focus.
+            .onPreInterceptKeyBeforeSoftKeyboard(interruptOnBack)
+            .onPreviewKeyEvent(interruptOnBack)
             .fillMaxSize()
             .background(TerminalBackground)
             .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -307,7 +324,10 @@ fun TerminalScreen() {
                     .focusRequester(focusRequester),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
                 cursorBrush = SolidColor(Color.Transparent),
-                visualTransformation = remember(question) { promptAndCursor(question?.question ?: PROMPT) },
+                // Like bash, no prompt while a command runs; what is typed meanwhile runs after it
+                visualTransformation = remember(question, jobs.isEmpty()) {
+                    promptAndCursor(question?.question ?: PROMPT.takeIf { jobs.isEmpty() })
+                },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
                     autoCorrectEnabled = false,
@@ -384,7 +404,8 @@ private suspend fun runCommand(
 
 // `<app> -s QUERY` searches inside the app; any other unknown line is bash's "command not found"
 private fun searchApp(context: Context, apps: List<LaunchableApp>, command: String): CommandResult {
-    val notFound = CommandResult.Output(listOf(OutputLine("command not found: $command", isError = true)), exitCode = 127)
+    val name = splitShellWords(command)?.firstOrNull() ?: command
+    val notFound = CommandResult.Output(listOf(OutputLine("bash: $name: command not found", isError = true)), exitCode = 127)
     val (label, query) = splitAppSearch(command) ?: return notFound
     val app = apps.findByName(label) ?: return notFound
     if (searchInApp(context, app, query)) return CommandResult.Output(emptyList())
@@ -412,11 +433,11 @@ private fun TerminalLineText(line: TerminalLine) {
     }
 }
 
-// The prompt, drawn inside the field so a long command wraps onto the next line from the left edge, like
+// The prompt (none while a command runs), drawn inside the field so a long command wraps onto the next line from the left edge, like
 // in a real terminal, then the typed text and a static block cursor. The field's own cursor is hidden
 // because it blinks, and there are no animations yet.
-private fun promptAndCursor(promptText: String) = VisualTransformation { text ->
-    val prompt = "$promptText "
+private fun promptAndCursor(promptText: String?) = VisualTransformation { text ->
+    val prompt = promptText?.let { "$it " }.orEmpty()
     TransformedText(
         buildAnnotatedString {
             withStyle(SpanStyle(color = Accent1)) { append(prompt) }

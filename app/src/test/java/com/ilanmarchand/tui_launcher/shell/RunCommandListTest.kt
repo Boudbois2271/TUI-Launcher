@@ -35,7 +35,7 @@ class RunCommandListTest {
         }
     }
 
-    private fun run(line: String, aliases: Map<String, String> = emptyMap()): Pair<List<ShellEffect>, Int> {
+    private fun run(line: String, aliases: Map<String, String> = emptyMap(), lastStatus: Int = 0): Pair<List<ShellEffect>, Int> {
         val effects = mutableListOf<ShellEffect>()
         val items = (parseCommandLine(line) as ParseResult.Parsed).items
         val status = runBlocking {
@@ -46,7 +46,7 @@ class RunCommandListTest {
 
                 override fun target(target: String, lastStatus: Int) = target
             }
-            runCommandList(items, expander, runner, fakeFiles) {
+            runCommandList(items, expander, runner, fakeFiles, lastStatus) {
                 effects += it
             }
         }
@@ -54,6 +54,13 @@ class RunCommandListTest {
     }
 
     private fun printed(vararg lines: String) = lines.map { ShellEffect.Print(OutputLine(it)) }
+
+    @Test
+    fun statusComesFromThePreviousLine() {
+        // `false`, then `echo $?` on the next line, or a line interrupted with Back (130)
+        assertEquals(printed("1") to 0, run("say \$?", lastStatus = 1))
+        assertEquals(printed("130") to 0, run("say \$?", lastStatus = 130))
+    }
 
     @Test
     fun andRunsOnlyAfterSuccess() {
@@ -126,7 +133,7 @@ class RunCommandListTest {
     fun inputComesFromFiles() {
         assertEquals(printed("B", "A") to 0, run("upper < in.txt"))
         assertEquals(
-            listOf(ShellEffect.Print(OutputLine("nope: No such file or directory", isError = true))) to 1,
+            listOf(ShellEffect.Print(OutputLine("bash: nope: No such file or directory", isError = true))) to 1,
             run("upper < nope")
         )
         // The command didn't run
@@ -138,7 +145,7 @@ class RunCommandListTest {
         assertEquals(emptyList<ShellEffect>() to 1, run("fail oops 2> errors"))
         assertEquals(listOf("oops"), files["errors"])
         assertEquals(
-            listOf(ShellEffect.Print(OutputLine("dir: Is a directory", isError = true))) to 1,
+            listOf(ShellEffect.Print(OutputLine("bash: dir: Is a directory", isError = true))) to 1,
             run("say x > dir")
         )
     }
