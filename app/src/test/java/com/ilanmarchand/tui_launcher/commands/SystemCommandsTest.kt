@@ -56,7 +56,7 @@ class SystemCommandsTest {
     fun unameFields() {
         val info = UnameInfo("4.14.186-perf+", "#1 SMP PREEMPT Wed Jun 1 2022", "aarch64")
         assertEquals(out("Linux"), uname(emptyList(), info))
-        assertEquals(out("Linux phone 4.14.186-perf+ #1 SMP PREEMPT Wed Jun 1 2022 aarch64 Android"), uname(listOf("-a"), info))
+        assertEquals(out("Linux Note9T 4.14.186-perf+ #1 SMP PREEMPT Wed Jun 1 2022 aarch64 Android"), uname(listOf("-a"), info))
         assertEquals(out("Linux 4.14.186-perf+ aarch64"), uname(listOf("-srm"), info))
         assertEquals(out("Android"), uname(listOf("-o"), info))
     }
@@ -143,9 +143,9 @@ class SystemCommandsTest {
     fun fastfetchLayout() {
         assertEquals("0 B", fastfetchSize(0))
         assertEquals("7.06 GiB", fastfetchSize(7_580_000_000))
-        val lines = fastfetchLines("Boudbois@phone", listOf("OS" to "Android 11 aarch64"))
-        assertEquals(OutputLine("Boudbois@phone", accentLength = 14), lines[7])
-        assertEquals(OutputLine("--------------"), lines[8])
+        val lines = fastfetchLines("BBois@Note9T", listOf("OS" to "Android 11 aarch64"))
+        assertEquals(OutputLine("BBois@Note9T", accentLength = 12), lines[7])
+        assertEquals(OutputLine("------------"), lines[8])
         assertEquals(OutputLine("OS: Android 11 aarch64", accentLength = 2), lines[9])
     }
 }
