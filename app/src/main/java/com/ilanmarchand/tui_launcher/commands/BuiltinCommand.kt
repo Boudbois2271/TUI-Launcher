@@ -24,6 +24,11 @@ interface BuiltinCommand {
     val takesArgs: Boolean
         get() = false
 
+    // A command that does nothing without arguments leaves its bare name free, so the name alone works like
+    // any other word: `contacts` opens the Contacts app, while `contacts list` is the command
+    val needsArgs: Boolean
+        get() = false
+
     fun run(context: Context, args: String): CommandResult
 }
 
@@ -50,8 +55,11 @@ fun findBuiltinCommand(input: String): BuiltinCall? {
     val firstWord = input.substringBefore(' ')
     val args = input.substringAfter(' ', "").trim()
     for (command in builtinCommands) {
-        if (command.name.equals(input, ignoreCase = true)) return BuiltinCall(command, "")
-        if (command.takesArgs && command.name.equals(firstWord, ignoreCase = true)) {
+        if (command.name.equals(input, ignoreCase = true)) {
+            if (command.needsArgs) continue
+            return BuiltinCall(command, "")
+        }
+        if (command.takesArgs && args.isNotEmpty() && command.name.equals(firstWord, ignoreCase = true)) {
             return BuiltinCall(command, args)
         }
     }

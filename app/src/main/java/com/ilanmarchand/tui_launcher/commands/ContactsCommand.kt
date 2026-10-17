@@ -10,10 +10,12 @@ import com.ilanmarchand.tui_launcher.contacts.readContactNumbers
 // The phone's address book. Linux has no standard command for it, so the syntax is the launcher's own:
 //   contacts list
 //   contacts add NAME NUMBER     (quote a name with spaces: contacts add 'Jane DOE' 0612345678)
-// New contacts are saved on the phone itself, outside the Google account.
+// `contacts` alone still opens the Contacts app. New contacts are saved on the phone itself, outside the
+// Google account.
 object ContactsCommand : BuiltinCommand {
     override val name = "contacts"
     override val takesArgs = true
+    override val needsArgs = true
 
     private val USAGE = listOf("usage: contacts list", "       contacts add NAME NUMBER")
 

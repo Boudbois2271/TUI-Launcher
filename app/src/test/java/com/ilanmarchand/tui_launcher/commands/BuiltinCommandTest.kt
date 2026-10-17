@@ -20,6 +20,14 @@ class BuiltinCommandTest {
     }
 
     @Test
+    fun aCommandThatNeedsArgumentsLeavesItsBareNameToApps() {
+        assertNull(findBuiltinCommand("contacts"))
+        assertNull(findBuiltinCommand("Contacts"))
+        assertEquals(BuiltinCall(ContactsCommand, "list"), findBuiltinCommand("contacts list"))
+        assertEquals(BuiltinCall(CallCommand, ""), findBuiltinCommand("call"))
+    }
+
+    @Test
     fun otherNamesAreNotBuiltins() {
         assertNull(findBuiltinCommand("instagram"))
         assertNull(findBuiltinCommand("aliasing ig"))
