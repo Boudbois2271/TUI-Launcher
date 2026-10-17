@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Test-only lets `adb shell dpm remove-active-admin` take device owner back from the PC,
+         a way out if the launcher's own dpm command ever can't run -->
+    <application android:testOnly="true" />
+</manifest>
