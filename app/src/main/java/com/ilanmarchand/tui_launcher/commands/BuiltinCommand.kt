@@ -118,7 +118,15 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     UnsetCommand,
     EnvCommand,
     NanoCommand,
-    SleepCommand
+    SleepCommand,
+    TrCommand,
+    CutCommand,
+    TeeCommand,
+    SeqCommand,
+    TacCommand,
+    RevCommand,
+    NlCommand,
+    SedCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

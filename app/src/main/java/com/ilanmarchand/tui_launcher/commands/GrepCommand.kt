@@ -2,13 +2,14 @@ package com.ilanmarchand.tui_launcher.commands
 
 import java.util.regex.PatternSyntaxException
 
-// GNU grep: grep [-ivcnEFGwxq] [-e PATTERN]... PATTERN
-// Exits 0 when a line is selected, 1 when none is, 2 on an error, as grep does. Texts follow GNU grep.
+// GNU grep: grep [-ivcnlEFGwxq] [-e PATTERN]... PATTERN [FILE...]
+// Searches the files, or the piped-in text. With several files, each line starts with its file name. Exits 0
+// when a line is selected, 1 when none is, 2 on an error, as grep does. Texts follow GNU grep.
 object GrepCommand : TextTool("grep") {
-    override val synopsis = "grep [-ivcnEFGwxq] [-e PATTERN]... PATTERN"
+    override val synopsis = "grep [-ivcnlEFGwxq] [-e PATTERN]... PATTERN [FILE ...]"
     override val summary = "Print lines that match patterns."
 
-    override fun process(words: List<String>, input: List<String>) = grep(words, input)
+    override fun process(words: List<String>, input: List<String>, files: FileLines) = grep(words, input, files)
 }
 
 private val GREP_USAGE = arrayOf(
@@ -17,22 +18,19 @@ private val GREP_USAGE = arrayOf(
 )
 
 private val GREP_LONG = mapOf(
-    "ignore-case" to 'i', "invert-match" to 'v', "count" to 'c', "line-number" to 'n',
+    "ignore-case" to 'i', "invert-match" to 'v', "count" to 'c', "line-number" to 'n', "files-with-matches" to 'l',
     "extended-regexp" to 'E', "fixed-strings" to 'F', "basic-regexp" to 'G', "word-regexp" to 'w',
     "line-regexp" to 'x', "quiet" to 'q', "silent" to 'q', "regexp" to 'e'
 )
 
-internal fun grep(words: List<String>, input: List<String>): CommandResult {
-    val args = when (val result = parseGnuArgs("grep", words, "ivcnEFGwxqs", "e", GREP_LONG)) {
+internal fun grep(words: List<String>, input: List<String>, files: FileLines = NoFiles): CommandResult {
+    val args = when (val result = parseGnuArgs("grep", words, "ivcnlEFGwxqs", "e", GREP_LONG)) {
         is GnuArgsResult.Invalid -> return errorLines(result.message, *GREP_USAGE, exitCode = 2)
         is GnuArgsResult.Parsed -> result.args
     }
     val operands = args.operands.toMutableList()
     val patterns = args.values['e']
         ?: listOf(operands.removeFirstOrNull() ?: return errorLines(*GREP_USAGE, exitCode = 2))
-    if (operands.isNotEmpty()) {
-        return errorLines(*operands.map { "grep: $it: No such file or directory" }.toTypedArray(), exitCode = 2)
-    }
     val regexes = try {
         patterns.map { grepRegex(it, args.flags) }
     } catch (e: PatternSyntaxException) {
@@ -40,14 +38,36 @@ internal fun grep(words: List<String>, input: List<String>): CommandResult {
         return errorLines("grep: $message", exitCode = 2)
     }
     val invert = 'v' in args.flags
-    val selected = input.withIndex().filter { (_, line) -> regexes.any { it.containsMatchIn(line) } != invert }
-    val status = if (selected.isEmpty()) 1 else 0
-    return when {
-        'q' in args.flags -> textLines(emptyList(), status)
-        'c' in args.flags -> textLines(listOf(selected.size.toString()), status)
-        'n' in args.flags -> textLines(selected.map { (index, line) -> "${index + 1}:$line" }, status)
-        else -> textLines(selected.map { it.value }, status)
+    val named = operands.size > 1
+    val lines = mutableListOf<OutputLine>()
+    var matched = false
+    var failed = false
+    forEachInput(
+        operands, input, files,
+        onError = { name, reason ->
+            failed = true
+            lines += OutputLine("grep: $name: $reason", isError = true)
+        }
+    ) { source ->
+        val shown = source.name ?: "(standard input)"
+        val prefix = if (named) "$shown:" else ""
+        val selected = source.lines.withIndex().filter { (_, line) -> regexes.any { it.containsMatchIn(line) } != invert }
+        if (selected.isNotEmpty()) matched = true
+        when {
+            'q' in args.flags -> Unit
+            'l' in args.flags -> if (selected.isNotEmpty()) lines += OutputLine(shown)
+            'c' in args.flags -> lines += OutputLine("$prefix${selected.size}")
+            'n' in args.flags -> selected.forEach { (index, line) -> lines += OutputLine("$prefix${index + 1}:$line") }
+            else -> selected.forEach { lines += OutputLine("$prefix${it.value}") }
+        }
     }
+    val status = when {
+        'q' in args.flags && matched -> 0
+        failed -> 2
+        matched -> 0
+        else -> 1
+    }
+    return CommandResult.Output(lines, status)
 }
 
 // GNU grep's pattern kinds: fixed strings (-F), extended (-E), or basic (the default), where + ? | ( ) { }

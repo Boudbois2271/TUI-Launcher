@@ -5,7 +5,7 @@ object EchoCommand : TextTool("echo") {
     override val synopsis = "echo [-neE] [arg ...]"
     override val summary = "Write arguments to the standard output."
 
-    override fun process(words: List<String>, input: List<String>) = echo(words)
+    override fun process(words: List<String>, input: List<String>, files: FileLines) = echo(words)
 }
 
 internal fun echo(words: List<String>): CommandResult {
