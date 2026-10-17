@@ -20,6 +20,7 @@ class RunCommandListTest {
             "fail" -> CommandResult.Output(listOf(OutputLine(words.drop(1).joinToString(" "), isError = true)))
             "clear" -> CommandResult.Clear
             "upper" -> CommandResult.Output(stdin.orEmpty().map { OutputLine(it.uppercase()) })
+            "ask" -> CommandResult.Ask(listOf(OutputLine("sure?")), "[Y/n]") { CommandResult.Output(emptyList()) }
             else -> CommandResult.Output(listOf(OutputLine("command not found: $command", isError = true)), 127)
         }
     }
@@ -85,5 +86,14 @@ class RunCommandListTest {
     fun aliasesExpandForEachCommand() {
         val aliases = mapOf("hi" to "say hi", "up" to "upper")
         assertEquals(printed("HI THERE") to 0, run("hi there | up", aliases))
+    }
+
+    @Test
+    fun aQuestionEndsTheLine() {
+        val (effects, _) = run("say before; ask; say after")
+        assertEquals(ShellEffect.Print(OutputLine("before")), effects[0])
+        assertEquals(ShellEffect.Print(OutputLine("sure?")), effects[1])
+        assertEquals("[Y/n]", (effects[2] as ShellEffect.Ask).question)
+        assertEquals(3, effects.size)
     }
 }

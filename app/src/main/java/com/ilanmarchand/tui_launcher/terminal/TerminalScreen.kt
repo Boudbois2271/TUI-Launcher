@@ -72,6 +72,7 @@ import com.ilanmarchand.tui_launcher.shell.ShellEffect
 import com.ilanmarchand.tui_launcher.shell.expandHistory
 import com.ilanmarchand.tui_launcher.shell.parseCommandLine
 import com.ilanmarchand.tui_launcher.shell.runCommandList
+import com.ilanmarchand.tui_launcher.shell.showResult
 import com.ilanmarchand.tui_launcher.system.PROMPT
 import com.ilanmarchand.tui_launcher.ui.theme.Accent1
 import com.ilanmarchand.tui_launcher.ui.theme.Accent2
@@ -84,7 +85,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private sealed interface TerminalLine {
-    data class Command(val input: String) : TerminalLine
+    // prompt: the shell's prompt, or the question a command asked
+    data class Command(val input: String, val prompt: String = PROMPT) : TerminalLine
     data class Output(val text: String, val isError: Boolean = false, val accentLength: Int = 0) : TerminalLine
 }
 
@@ -102,13 +104,37 @@ fun TerminalScreen() {
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
+    // A question a command asked; the next typed line answers it
+    var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
 
+    // Shows what a command did, on the main thread
+    suspend fun show(effect: ShellEffect) = withContext(Dispatchers.Main) {
+        when (effect) {
+            ShellEffect.ClearScreen -> history.clear()
+            is ShellEffect.Print -> history += effect.line.let {
+                TerminalLine.Output(it.text, it.isError, it.accentLength)
+            }
+            is ShellEffect.Ask -> question = effect
+        }
+    }
+
     fun submit(line: String) {
         val name = line.trim()
+        question?.let { asked ->
+            question = null
+            history += TerminalLine.Command(name, asked.question)
+            scope.launch {
+                // Like every submitted line, the answer is logged
+                withContext(Dispatchers.IO) { runCatching { appendToCommandLog(context, name) } }
+                val result = withContext(Dispatchers.IO) { asked.answer(name) }
+                showResult(result) { show(it) }
+            }
+            return
+        }
         history += TerminalLine.Command(name)
         if (name.isEmpty()) return
 
@@ -140,16 +166,7 @@ fun TerminalScreen() {
                     // as in bash
                     val aliases = AliasStore(context).all()
                     val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
-                    runCommandList(parsed.items, { expandAliases(it, aliases) }, runner) { effect ->
-                        withContext(Dispatchers.Main) {
-                            when (effect) {
-                                ShellEffect.ClearScreen -> history.clear()
-                                is ShellEffect.Print -> history += effect.line.let {
-                                    TerminalLine.Output(it.text, it.isError, it.accentLength)
-                                }
-                            }
-                        }
-                    }
+                    runCommandList(parsed.items, { expandAliases(it, aliases) }, runner) { show(it) }
                 }
             }
         }
@@ -193,7 +210,7 @@ fun TerminalScreen() {
                     .focusRequester(focusRequester),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
                 cursorBrush = SolidColor(Color.Transparent),
-                visualTransformation = PromptAndCursor,
+                visualTransformation = remember(question) { promptAndCursor(question?.question ?: PROMPT) },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
                     autoCorrectEnabled = false,
@@ -273,7 +290,7 @@ private fun TerminalLineText(line: TerminalLine) {
     when (line) {
         is TerminalLine.Command -> Text(
             text = buildAnnotatedString {
-                withStyle(SpanStyle(color = Accent1)) { append("$PROMPT ") }
+                withStyle(SpanStyle(color = Accent1)) { append("${line.prompt} ") }
                 append(line.input)
             },
             color = TerminalForeground
@@ -292,8 +309,8 @@ private fun TerminalLineText(line: TerminalLine) {
 // The prompt, drawn inside the field so a long command wraps onto the next line from the left edge, like
 // in a real terminal, then the typed text and a static block cursor. The field's own cursor is hidden
 // because it blinks, and there are no animations yet.
-private val PromptAndCursor = VisualTransformation { text ->
-    val prompt = "$PROMPT "
+private fun promptAndCursor(promptText: String) = VisualTransformation { text ->
+    val prompt = "$promptText "
     TransformedText(
         buildAnnotatedString {
             withStyle(SpanStyle(color = Accent1)) { append(prompt) }

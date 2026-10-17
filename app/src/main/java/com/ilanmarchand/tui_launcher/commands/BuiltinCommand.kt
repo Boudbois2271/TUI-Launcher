@@ -14,6 +14,19 @@ sealed interface CommandResult {
         val lines: List<OutputLine>,
         val exitCode: Int = if (lines.any { it.isError }) 1 else 0
     ) : CommandResult
+
+    // Prints the lines, then asks a question, like pacman's [Y/n]. The question takes the prompt's place, and
+    // the next typed line is the answer: answer() runs off the main thread and its result is shown.
+    data class Ask(
+        val lines: List<OutputLine>,
+        val question: String,
+        val answer: (String) -> CommandResult
+    ) : CommandResult
+}
+
+// A command that does more as root, reached through sudo (pacman -R and -S)
+interface RootCommand : BuiltinCommand {
+    fun runAsRoot(context: Context, args: String): CommandResult
 }
 
 // accentLength: how many leading characters are drawn in the accent color, such as fastfetch's keys.
@@ -86,7 +99,9 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     PlayerctlCommand,
     GrimCommand,
     XdgOpenCommand,
-    HistoryCommand
+    HistoryCommand,
+    SudoCommand,
+    PacmanCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {
