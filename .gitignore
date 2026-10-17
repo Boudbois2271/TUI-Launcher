@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Copy of ~/.android/debug.keystore, kept next to the project as a backup. It signs the app, so it stays out of git.
+debug.keystore
