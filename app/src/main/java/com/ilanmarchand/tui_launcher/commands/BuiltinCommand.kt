@@ -85,7 +85,8 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     FastfetchCommand,
     PlayerctlCommand,
     GrimCommand,
-    XdgOpenCommand
+    XdgOpenCommand,
+    HistoryCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

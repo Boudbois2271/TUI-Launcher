@@ -25,3 +25,14 @@ fun readLastCommandLogLines(context: Context, count: Int): List<String> {
     if (!file.exists()) return emptyList()
     return file.readLines().takeLast(count)
 }
+
+// The logged commands without their timestamps, oldest first: the shell's history, like ~/.bash_history
+fun readCommandHistory(context: Context): List<String> {
+    val file = commandLogFile(context)
+    if (!file.exists()) return emptyList()
+    return file.readLines().map(::stripTimestamp)
+}
+
+// "2026-10-17 12:16:46  unown" becomes "unown"
+internal fun stripTimestamp(line: String): String =
+    if (line.length >= 21 && line[4] == '-' && line[19] == ' ' && line[20] == ' ') line.drop(21) else line

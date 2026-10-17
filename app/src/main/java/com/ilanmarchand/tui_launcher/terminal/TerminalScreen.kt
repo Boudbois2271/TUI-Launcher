@@ -64,9 +64,12 @@ import com.ilanmarchand.tui_launcher.commands.OutputLine
 import com.ilanmarchand.tui_launcher.commands.findBuiltinCommand
 import com.ilanmarchand.tui_launcher.commands.splitShellWords
 import com.ilanmarchand.tui_launcher.log.appendToCommandLog
+import com.ilanmarchand.tui_launcher.log.readCommandHistory
 import com.ilanmarchand.tui_launcher.shell.CommandRunner
+import com.ilanmarchand.tui_launcher.shell.HistoryExpansion
 import com.ilanmarchand.tui_launcher.shell.ParseResult
 import com.ilanmarchand.tui_launcher.shell.ShellEffect
+import com.ilanmarchand.tui_launcher.shell.expandHistory
 import com.ilanmarchand.tui_launcher.shell.parseCommandLine
 import com.ilanmarchand.tui_launcher.shell.runCommandList
 import com.ilanmarchand.tui_launcher.system.PROMPT
@@ -110,17 +113,31 @@ fun TerminalScreen() {
         if (name.isEmpty()) return
 
         scope.launch {
+            // Like bash, !! and the other history events are expanded first, and the expanded line is the
+            // one echoed, logged and run, so the log stays a usable history
+            val past = withContext(Dispatchers.IO) {
+                runCatching { readCommandHistory(context) }.getOrDefault(emptyList())
+            }
+            val expansion = expandHistory(name, past)
+            val line = (expansion as? HistoryExpansion.Expanded)?.line ?: name
             val logged = withContext(Dispatchers.IO) {
-                runCatching { appendToCommandLog(context, name) }
+                runCatching { appendToCommandLog(context, line) }
             }
             if (logged.isFailure) {
                 history += TerminalLine.Output("could not write the log", isError = true)
             }
-            when (val parsed = parseCommandLine(name)) {
+            when (expansion) {
+                is HistoryExpansion.Failed -> {
+                    history += TerminalLine.Output(expansion.message, isError = true)
+                    return@launch
+                }
+                is HistoryExpansion.Expanded -> if (expansion.changed) history += TerminalLine.Output(line)
+            }
+            when (val parsed = parseCommandLine(line)) {
                 is ParseResult.SyntaxError -> history += TerminalLine.Output(parsed.message, isError = true)
                 is ParseResult.Parsed -> withContext(Dispatchers.IO) {
                     // Aliases are read once per line, so one defined on a line applies from the next line,
-                    // as in bash. The log keeps the line as typed.
+                    // as in bash
                     val aliases = AliasStore(context).all()
                     val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
                     runCommandList(parsed.items, { expandAliases(it, aliases) }, runner) { effect ->
