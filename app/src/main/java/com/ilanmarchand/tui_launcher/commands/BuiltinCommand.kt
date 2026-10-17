@@ -117,7 +117,8 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     ExportCommand,
     UnsetCommand,
     EnvCommand,
-    NanoCommand
+    NanoCommand,
+    SleepCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

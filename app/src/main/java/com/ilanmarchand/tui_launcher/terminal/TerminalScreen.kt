@@ -95,7 +95,10 @@ import com.ilanmarchand.tui_launcher.ui.theme.TerminalForeground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -140,6 +143,9 @@ fun TerminalScreen() {
     val keyboard = LocalSoftwareKeyboardController.current
     // Lines run one after another, as in bash, even when typed while a command is still running
     val running = remember { Mutex() }
+    // Lines running or waiting their turn. Back interrupts them, as Ctrl+C would in a terminal.
+    val jobs = remember { mutableStateListOf<Job>() }
+    BackHandler(enabled = jobs.isNotEmpty()) { jobs.toList().forEach { it.cancel() } }
     val variables = ShellVariables.variables
     // A question a command asked; the next typed line answers it
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
@@ -215,24 +221,43 @@ fun TerminalScreen() {
         }
     }
 
+    // Runs a line's work in turn. When Back cancels it mid-run, ^C is shown and $? is 130, as in bash.
+    fun launchLine(work: suspend () -> Unit) {
+        val job = scope.launch {
+            var started = false
+            try {
+                running.withLock {
+                    started = true
+                    work()
+                }
+            } catch (e: CancellationException) {
+                if (started) {
+                    history += TerminalLine.Output("^C")
+                    variables.lastStatus = 130
+                }
+                throw e
+            }
+        }
+        jobs += job
+        job.invokeOnCompletion { jobs -= job }
+    }
+
     fun submit(line: String) {
         val name = line.trim()
         question?.let { asked ->
             question = null
             history += TerminalLine.Command(name, asked.question)
-            scope.launch {
-                running.withLock {
-                    // Like every submitted line, the answer is logged
-                    withContext(Dispatchers.IO) { runCatching { appendToCommandLog(context, name) } }
-                    val result = withContext(Dispatchers.IO) { asked.answer(name) }
-                    showResult(result) { show(it) }?.let { variables.lastStatus = it }
-                }
+            launchLine {
+                // Like every submitted line, the answer is logged
+                withContext(Dispatchers.IO) { runCatching { appendToCommandLog(context, name) } }
+                val result = runInterruptible(Dispatchers.IO) { asked.answer(name) }
+                showResult(result) { show(it) }?.let { variables.lastStatus = it }
             }
             return
         }
         history += TerminalLine.Command(name)
         if (name.isEmpty()) return
-        scope.launch { running.withLock { runLine(name) } }
+        launchLine { runLine(name) }
     }
 
     editing?.let { edit ->
@@ -342,7 +367,8 @@ private suspend fun runCommand(
         assignments.forEach { (name, value) -> ShellVariables.variables.set(name, value) }
         return CommandResult.Output(emptyList())
     }
-    findBuiltinCommand(command)?.let { return it.command.run(context, it.args, stdin) }
+    // Interruptible, so Back stops a waiting command such as sleep
+    findBuiltinCommand(command)?.let { return runInterruptible { it.command.run(context, it.args, stdin) } }
     val loaded = snapshotFlow(apps).filterNotNull().first()
     // A label with a shell character, such as "Red & moi", is typed in quotes
     val app = loaded.findByName(command)
