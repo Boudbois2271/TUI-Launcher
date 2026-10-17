@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -103,9 +102,8 @@ fun TerminalScreen() {
         focusRequester.requestFocus()
     }
 
-    fun submit() {
-        val name = input.trim()
-        input = ""
+    fun submit(line: String) {
+        val name = line.trim()
         history += TerminalLine.Command(name)
         if (name.isEmpty()) return
 
@@ -160,27 +158,33 @@ fun TerminalScreen() {
                 TerminalLineText(line)
             }
         }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Text(text = "$PROMPT ", color = Accent1)
-            TerminalKeyboard {
-                BasicTextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(focusRequester),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
-                    cursorBrush = SolidColor(Color.Transparent),
-                    visualTransformation = BlockCursor,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.None,
-                        autoCorrectEnabled = false,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { submit() })
-                )
-            }
+        TerminalKeyboard {
+            BasicTextField(
+                value = input,
+                // The field holds several lines so a long command wraps under the prompt. A new line, from
+                // Enter on a hardware keyboard or from pasted text, submits instead: like bash, each pasted
+                // line runs as its own command.
+                onValueChange = { typed ->
+                    val lines = typed.split('\n')
+                    lines.dropLast(1).forEach(::submit)
+                    input = lines.last()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
+                cursorBrush = SolidColor(Color.Transparent),
+                visualTransformation = PromptAndCursor,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = {
+                    submit(input)
+                    input = ""
+                })
+            )
         }
     }
 }
@@ -257,19 +261,22 @@ private fun TerminalLineText(line: TerminalLine) {
     }
 }
 
-// Static block cursor drawn after the typed text. The field's own cursor is hidden
+// The prompt, drawn inside the field so a long command wraps onto the next line from the left edge, like
+// in a real terminal, then the typed text and a static block cursor. The field's own cursor is hidden
 // because it blinks, and there are no animations yet.
-private val BlockCursor = VisualTransformation { text ->
+private val PromptAndCursor = VisualTransformation { text ->
+    val prompt = "$PROMPT "
     TransformedText(
         buildAnnotatedString {
+            withStyle(SpanStyle(color = Accent1)) { append(prompt) }
             append(text)
             withStyle(SpanStyle(background = TerminalForeground, color = TerminalBackground)) {
                 append(" ")
             }
         },
         object : OffsetMapping {
-            override fun originalToTransformed(offset: Int) = offset
-            override fun transformedToOriginal(offset: Int) = offset.coerceAtMost(text.length)
+            override fun originalToTransformed(offset: Int) = offset + prompt.length
+            override fun transformedToOriginal(offset: Int) = (offset - prompt.length).coerceIn(0, text.length)
         }
     )
 }
