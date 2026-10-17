@@ -16,7 +16,9 @@ sealed interface CommandResult {
     ) : CommandResult
 }
 
-data class OutputLine(val text: String, val isError: Boolean = false)
+// accentLength: how many leading characters are drawn in the accent color, such as fastfetch's keys.
+// A pipe passes only the text on, like a real tool that drops colors when piped.
+data class OutputLine(val text: String, val isError: Boolean = false, val accentLength: Int = 0)
 
 // A command typed by its name, like an app. Each one lives in its own file.
 // run() is called on a background thread, so it may read files and preferences.
@@ -70,7 +72,17 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     UniqCommand,
     HelpCommand,
     TypeCommand,
-    CompgenCommand
+    CompgenCommand,
+    DateCommand,
+    UptimeCommand,
+    UnameCommand,
+    WhoamiCommand,
+    HostnameCommand,
+    FreeCommand,
+    DfCommand,
+    CalCommand,
+    AcpiCommand,
+    FastfetchCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

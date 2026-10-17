@@ -68,6 +68,7 @@ import com.ilanmarchand.tui_launcher.shell.ParseResult
 import com.ilanmarchand.tui_launcher.shell.ShellEffect
 import com.ilanmarchand.tui_launcher.shell.parseCommandLine
 import com.ilanmarchand.tui_launcher.shell.runCommandList
+import com.ilanmarchand.tui_launcher.system.PROMPT
 import com.ilanmarchand.tui_launcher.ui.theme.Accent1
 import com.ilanmarchand.tui_launcher.ui.theme.Accent2
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalBackground
@@ -78,11 +79,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val PROMPT = "Boudbois@phone: >"
-
 private sealed interface TerminalLine {
     data class Command(val input: String) : TerminalLine
-    data class Output(val text: String, val isError: Boolean = false) : TerminalLine
+    data class Output(val text: String, val isError: Boolean = false, val accentLength: Int = 0) : TerminalLine
 }
 
 @Composable
@@ -128,7 +127,9 @@ fun TerminalScreen() {
                         withContext(Dispatchers.Main) {
                             when (effect) {
                                 ShellEffect.ClearScreen -> history.clear()
-                                is ShellEffect.Print -> history += TerminalLine.Output(effect.line.text, effect.line.isError)
+                                is ShellEffect.Print -> history += effect.line.let {
+                                    TerminalLine.Output(it.text, it.isError, it.accentLength)
+                                }
                             }
                         }
                     }
@@ -247,7 +248,10 @@ private fun TerminalLineText(line: TerminalLine) {
         )
 
         is TerminalLine.Output -> Text(
-            text = line.text,
+            text = buildAnnotatedString {
+                withStyle(SpanStyle(color = Accent1)) { append(line.text.take(line.accentLength)) }
+                append(line.text.drop(line.accentLength))
+            },
             color = if (line.isError) Accent2 else TerminalForeground
         )
     }
