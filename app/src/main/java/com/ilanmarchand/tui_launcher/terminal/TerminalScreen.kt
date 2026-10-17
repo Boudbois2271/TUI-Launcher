@@ -78,6 +78,7 @@ import com.ilanmarchand.tui_launcher.shell.Expander
 import com.ilanmarchand.tui_launcher.shell.ShellVariables
 import com.ilanmarchand.tui_launcher.shell.assignmentsIn
 import com.ilanmarchand.tui_launcher.shell.expandVariables
+import com.ilanmarchand.tui_launcher.shell.expandWildcards
 import com.ilanmarchand.tui_launcher.shell.HistoryExpansion
 import com.ilanmarchand.tui_launcher.shell.ParseResult
 import com.ilanmarchand.tui_launcher.shell.ShellEffect
@@ -193,8 +194,11 @@ fun TerminalScreen() {
                     fun lookup(name: String, lastStatus: Int) =
                         if (name == "?") lastStatus.toString() else variableValue(name, variables, shellBuiltinVariables(workspace))
 
-                    override fun command(text: String, lastStatus: Int) =
-                        expandVariables(expandAliases(text, aliases)) { lookup(it, lastStatus) }
+                    // As in bash: aliases, then variables, then wildcards on file names
+                    override fun command(text: String, lastStatus: Int) = expandWildcards(
+                        expandVariables(expandAliases(text, aliases)) { lookup(it, lastStatus) },
+                        workspace.cwd
+                    )
 
                     override fun target(target: String, lastStatus: Int) =
                         expandVariables(target, escape = false) { lookup(it, lastStatus) }
