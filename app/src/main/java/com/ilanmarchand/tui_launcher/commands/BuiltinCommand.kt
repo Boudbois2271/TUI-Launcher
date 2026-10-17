@@ -41,7 +41,9 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     NmcliCommand,
     LoginctlCommand,
     WpctlCommand,
-    BrightnessctlCommand
+    BrightnessctlCommand,
+    ContactsCommand,
+    CallCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

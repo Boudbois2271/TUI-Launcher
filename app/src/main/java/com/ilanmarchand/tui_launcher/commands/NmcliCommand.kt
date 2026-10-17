@@ -1,16 +1,14 @@
 package com.ilanmarchand.tui_launcher.commands
 
 import android.Manifest
-import android.app.admin.DevicePolicyManager
 import android.content.Context
-import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.wifi.ScanResult
 import android.net.wifi.SupplicantState
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
-import com.ilanmarchand.tui_launcher.admin.AdminReceiver
+import com.ilanmarchand.tui_launcher.admin.grantOwnPermission
 
 // NetworkManager's nmcli, for the Wi-Fi parts Android lets a device owner do:
 //   nmcli radio wifi [on | off]
@@ -201,18 +199,8 @@ object NmcliCommand : BuiltinCommand {
     // Android shows Wi-Fi networks only to apps with the location permission, and only while Location is on.
     // As device owner, the launcher grants itself the permission, then leaves it under the user's control.
     private fun locationProblem(context: Context): String? {
-        val permission = Manifest.permission.ACCESS_FINE_LOCATION
-        if (context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-            val dpm = context.getSystemService(DevicePolicyManager::class.java)
-            if (!dpm.isDeviceOwnerApp(context.packageName)) return "Error: Not authorized to control networking."
-            val admin = AdminReceiver.component(context)
-            val granted = dpm.setPermissionGrantState(
-                admin, context.packageName, permission, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
-            )
-            if (!granted) return "Error: Not authorized to control networking."
-            dpm.setPermissionGrantState(
-                admin, context.packageName, permission, DevicePolicyManager.PERMISSION_GRANT_STATE_DEFAULT
-            )
+        if (!grantOwnPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            return "Error: Not authorized to control networking."
         }
         val location = context.getSystemService(LocationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && !location.isLocationEnabled) {
