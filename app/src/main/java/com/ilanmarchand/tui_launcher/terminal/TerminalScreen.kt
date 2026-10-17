@@ -66,12 +66,18 @@ import com.ilanmarchand.tui_launcher.apps.splitAppSearch
 import com.ilanmarchand.tui_launcher.commands.CommandResult
 import com.ilanmarchand.tui_launcher.commands.OutputLine
 import com.ilanmarchand.tui_launcher.commands.findBuiltinCommand
+import com.ilanmarchand.tui_launcher.commands.shellBuiltinVariables
+import com.ilanmarchand.tui_launcher.commands.variableValue
 import com.ilanmarchand.tui_launcher.commands.splitShellWords
 import com.ilanmarchand.tui_launcher.files.CurrentWorkspace
 import com.ilanmarchand.tui_launcher.files.WorkspaceRedirects
 import com.ilanmarchand.tui_launcher.log.appendToCommandLog
 import com.ilanmarchand.tui_launcher.log.readCommandHistory
 import com.ilanmarchand.tui_launcher.shell.CommandRunner
+import com.ilanmarchand.tui_launcher.shell.Expander
+import com.ilanmarchand.tui_launcher.shell.ShellVariables
+import com.ilanmarchand.tui_launcher.shell.assignmentsIn
+import com.ilanmarchand.tui_launcher.shell.expandVariables
 import com.ilanmarchand.tui_launcher.shell.HistoryExpansion
 import com.ilanmarchand.tui_launcher.shell.ParseResult
 import com.ilanmarchand.tui_launcher.shell.ShellEffect
@@ -132,6 +138,7 @@ fun TerminalScreen() {
     val keyboard = LocalSoftwareKeyboardController.current
     // Lines run one after another, as in bash, even when typed while a command is still running
     val running = remember { Mutex() }
+    val variables = ShellVariables.variables
     // A question a command asked; the next typed line answers it
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
 
@@ -173,13 +180,28 @@ fun TerminalScreen() {
             is HistoryExpansion.Expanded -> if (expansion.changed) history += TerminalLine.Output(line)
         }
         when (val parsed = parseCommandLine(line)) {
-            is ParseResult.SyntaxError -> history += TerminalLine.Output(parsed.message, isError = true)
+            is ParseResult.SyntaxError -> {
+                history += TerminalLine.Output(parsed.message, isError = true)
+                // bash's status for a syntax error
+                variables.lastStatus = 2
+            }
             is ParseResult.Parsed -> withContext(Dispatchers.IO) {
                 // Aliases are read once per line, so one defined on a line applies from the next line, as in bash
                 val aliases = AliasStore(context).all()
+                val workspace = CurrentWorkspace.get(context)
+                val expander = object : Expander {
+                    fun lookup(name: String, lastStatus: Int) =
+                        if (name == "?") lastStatus.toString() else variableValue(name, variables, shellBuiltinVariables(workspace))
+
+                    override fun command(text: String, lastStatus: Int) =
+                        expandVariables(expandAliases(text, aliases)) { lookup(it, lastStatus) }
+
+                    override fun target(target: String, lastStatus: Int) =
+                        expandVariables(target, escape = false) { lookup(it, lastStatus) }
+                }
                 val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
-                val files = WorkspaceRedirects(CurrentWorkspace.get(context))
-                runCommandList(parsed.items, { expandAliases(it, aliases) }, runner, files) { show(it) }
+                variables.lastStatus =
+                    runCommandList(parsed.items, expander, runner, WorkspaceRedirects(workspace)) { show(it) }
             }
         }
     }
@@ -194,7 +216,7 @@ fun TerminalScreen() {
                     // Like every submitted line, the answer is logged
                     withContext(Dispatchers.IO) { runCatching { appendToCommandLog(context, name) } }
                     val result = withContext(Dispatchers.IO) { asked.answer(name) }
-                    showResult(result) { show(it) }
+                    showResult(result) { show(it) }?.let { variables.lastStatus = it }
                 }
             }
             return
@@ -293,6 +315,11 @@ private suspend fun runCommand(
     if (command.equals("help launch", ignoreCase = true)) {
         val loaded = snapshotFlow(apps).filterNotNull().first()
         return CommandResult.Output((listOf("apps you can launch:") + loaded.map { it.label }).map { OutputLine(it) })
+    }
+    // NAME=value words alone set shell variables, as in bash
+    assignmentsIn(splitShellWords(command).orEmpty())?.let { assignments ->
+        assignments.forEach { (name, value) -> ShellVariables.variables.set(name, value) }
+        return CommandResult.Output(emptyList())
     }
     findBuiltinCommand(command)?.let { return it.command.run(context, it.args, stdin) }
     val loaded = snapshotFlow(apps).filterNotNull().first()

@@ -110,7 +110,10 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     RmCommand,
     TouchCommand,
     MvCommand,
-    CpCommand
+    CpCommand,
+    ExportCommand,
+    UnsetCommand,
+    EnvCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

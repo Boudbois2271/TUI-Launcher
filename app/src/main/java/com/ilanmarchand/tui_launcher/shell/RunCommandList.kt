@@ -27,13 +27,20 @@ interface RedirectFiles {
 
 class RedirectException(message: String) : Exception(message)
 
+// Expands a command's text (aliases, then variables) and a redirection's file name (variables) just before
+// they run, given the exit status of the pipeline before ($?)
+interface Expander {
+    fun command(text: String, lastStatus: Int): String
+    fun target(target: String, lastStatus: Int): String
+}
+
 // Runs a parsed command list like bash: after ; the next pipeline always runs, after && only if the last
-// one succeeded, after || only if it failed. Aliases are expanded for each command. Returns the exit status
-// of the last pipeline that ran. A command that asks a question ends the line there: the answer comes with
-// the next typed line, and the rest of the line is dropped.
+// one succeeded, after || only if it failed. Each command is expanded just before it runs. Returns the exit
+// status of the last pipeline that ran. A command that asks a question ends the line there: the answer comes
+// with the next typed line, and the rest of the line is dropped.
 suspend fun runCommandList(
     items: List<ListItem>,
-    expand: (String) -> String,
+    expand: Expander,
     runner: CommandRunner,
     files: RedirectFiles,
     emit: suspend (ShellEffect) -> Unit
@@ -45,7 +52,7 @@ suspend fun runCommandList(
             Connector.AND -> status == 0
             Connector.OR -> status != 0
         }
-        if (runs) status = runPipeline(item.pipeline, expand, runner, files, emit) ?: return status
+        if (runs) status = runPipeline(item.pipeline, status, expand, runner, files, emit) ?: return status
     }
     return status
 }
@@ -55,7 +62,8 @@ suspend fun runCommandList(
 // command's, or null when a command asked a question.
 private suspend fun runPipeline(
     pipeline: List<SimpleCommand>,
-    expand: (String) -> String,
+    lastStatus: Int,
+    expand: Expander,
     runner: CommandRunner,
     files: RedirectFiles,
     emit: suspend (ShellEffect) -> Unit
@@ -64,14 +72,16 @@ private suspend fun runPipeline(
     var status = 0
     for ((index, command) in pipeline.withIndex()) {
         val isLast = index == pipeline.lastIndex
-        val result = when (val prepared = prepareRedirects(command.redirects, files)) {
+        val redirects = command.redirects.map { it.copy(target = expand.target(it.target, lastStatus)) }
+        val result = when (val prepared = prepareRedirects(redirects, files)) {
             // Like bash, a redirection that fails stops its command from running
             is Prepared.Failed -> prepared.output
             is Prepared.Ready -> {
                 val input = prepared.input ?: stdin
-                val ran = if (command.text.isEmpty()) CommandResult.Output(emptyList()) else runner.run(expand(command.text), input)
+                val text = expand.command(command.text, lastStatus)
+                val ran = if (text.isBlank()) CommandResult.Output(emptyList()) else runner.run(text, input)
                 if (ran is CommandResult.Ask) return showResult(ran, emit)
-                writeRedirects(ran, command.redirects, files)
+                writeRedirects(ran, redirects, files)
             }
         }
         if (isLast) return showResult(result, emit)

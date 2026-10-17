@@ -39,7 +39,14 @@ class RunCommandListTest {
         val effects = mutableListOf<ShellEffect>()
         val items = (parseCommandLine(line) as ParseResult.Parsed).items
         val status = runBlocking {
-            runCommandList(items, { aliases[it.substringBefore(' ')]?.let { value -> value + it.drop(it.substringBefore(' ').length) } ?: it }, runner, fakeFiles) {
+            val expander = object : Expander {
+                override fun command(text: String, lastStatus: Int) =
+                    (aliases[text.substringBefore(' ')]?.let { value -> value + text.drop(text.substringBefore(' ').length) } ?: text)
+                        .replace("\$?", lastStatus.toString())
+
+                override fun target(target: String, lastStatus: Int) = target
+            }
+            runCommandList(items, expander, runner, fakeFiles) {
                 effects += it
             }
         }
@@ -134,5 +141,11 @@ class RunCommandListTest {
             listOf(ShellEffect.Print(OutputLine("dir: Is a directory", isError = true))) to 1,
             run("say x > dir")
         )
+    }
+
+    @Test
+    fun statusIsKnownToTheNextPipeline() {
+        assertEquals(printed("1") to 0, run("false; say $?"))
+        assertEquals(printed("0") to 0, run("true && say $?"))
     }
 }
