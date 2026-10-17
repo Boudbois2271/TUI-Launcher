@@ -18,11 +18,11 @@ val TerminalFont = FontFamily(
 
 // The terminal's text: smaller than Material's 16sp body, and without its extra letter spacing, so more
 // columns fit on the phone, as in a terminal
-val TerminalFontSize = 14.sp
+val TerminalFontSize = 13.sp
 val TerminalTextStyle = TextStyle(
     fontFamily = TerminalFont,
     fontSize = TerminalFontSize,
-    lineHeight = 20.sp,
+    lineHeight = 18.5.sp,
     letterSpacing = 0.sp
 )
 
