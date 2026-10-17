@@ -1,6 +1,7 @@
 package com.ilanmarchand.tui_launcher.commands
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.location.LocationManager
 import android.net.wifi.ScanResult
@@ -89,6 +90,8 @@ object NmcliCommand : BuiltinCommand {
         }
     }
 
+    // locationProblem() grants the location permission before any Wi-Fi network is read
+    @SuppressLint("MissingPermission")
     private fun list(context: Context, args: List<String>): CommandResult {
         if (args.isNotEmpty()) return error("Error: invalid extra argument '${args[0]}'.")
         locationProblem(context)?.let { return error(it) }
@@ -118,6 +121,8 @@ object NmcliCommand : BuiltinCommand {
         return CommandResult.Output(formatTable(header, rows).map { OutputLine(it) })
     }
 
+    // locationProblem() grants the location permission before any Wi-Fi network is read
+    @SuppressLint("MissingPermission")
     private fun connect(context: Context, args: List<String>): CommandResult {
         val ssid = args.firstOrNull() ?: return error("Error: SSID or BSSID are missing.")
         var password: String? = null

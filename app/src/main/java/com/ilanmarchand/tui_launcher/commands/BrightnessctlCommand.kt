@@ -3,6 +3,7 @@ package com.ilanmarchand.tui_launcher.commands
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.res.Resources
+import android.os.Build
 import android.provider.Settings
 import com.ilanmarchand.tui_launcher.admin.AdminReceiver
 import com.ilanmarchand.tui_launcher.system.Torch
@@ -30,8 +31,9 @@ object BrightnessctlCommand : BuiltinCommand {
             name = "lcd-backlight",
             max = maxBrightness(),
             read = { Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 0) },
+            // A device owner may change system settings from Android 9 on
             write = { value ->
-                runCatching {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && runCatching {
                     context.getSystemService(DevicePolicyManager::class.java).setSystemSetting(
                         AdminReceiver.component(context), Settings.System.SCREEN_BRIGHTNESS, value.toString()
                     )
