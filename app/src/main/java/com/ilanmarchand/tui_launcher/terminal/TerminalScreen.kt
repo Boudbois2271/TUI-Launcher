@@ -63,6 +63,8 @@ import com.ilanmarchand.tui_launcher.commands.CommandResult
 import com.ilanmarchand.tui_launcher.commands.OutputLine
 import com.ilanmarchand.tui_launcher.commands.findBuiltinCommand
 import com.ilanmarchand.tui_launcher.commands.splitShellWords
+import com.ilanmarchand.tui_launcher.files.CurrentWorkspace
+import com.ilanmarchand.tui_launcher.files.WorkspaceRedirects
 import com.ilanmarchand.tui_launcher.log.appendToCommandLog
 import com.ilanmarchand.tui_launcher.log.readCommandHistory
 import com.ilanmarchand.tui_launcher.shell.CommandRunner
@@ -166,7 +168,8 @@ fun TerminalScreen() {
                     // as in bash
                     val aliases = AliasStore(context).all()
                     val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
-                    runCommandList(parsed.items, { expandAliases(it, aliases) }, runner) { show(it) }
+                    val files = WorkspaceRedirects(CurrentWorkspace.get(context))
+                    runCommandList(parsed.items, { expandAliases(it, aliases) }, runner, files) { show(it) }
                 }
             }
         }
