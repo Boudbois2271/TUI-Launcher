@@ -2,11 +2,11 @@ package com.ilanmarchand.tui_launcher.commands
 
 import android.content.Context
 import android.os.Environment
+import com.ilanmarchand.tui_launcher.files.CurrentWorkspace
 import com.ilanmarchand.tui_launcher.system.dfHumanSize
 import com.ilanmarchand.tui_launcher.system.mountOf
 import com.ilanmarchand.tui_launcher.system.readMounts
 import com.ilanmarchand.tui_launcher.system.storageOf
-import java.io.File
 import kotlin.math.ceil
 
 // GNU df: df [-h] [FILE...]  Space on the file systems holding each FILE, by default the app data
@@ -27,15 +27,18 @@ object DfCommand : BuiltinCommand {
             listOf(Environment.getDataDirectory().path, Environment.getExternalStorageDirectory().path)
         }
         val mounts = readMounts()
+        val workspace = CurrentWorkspace.get(context)
         val errors = mutableListOf<OutputLine>()
         val rows = mutableListOf<DfRow>()
         for (path in paths) {
-            val storage = storageOf(path)
-            if (!File(path).exists() || storage == null) {
+            // Relative to the current directory, and through links such as /sdcard, as df finds the mount
+            val file = runCatching { workspace.resolve(path).canonicalFile }.getOrNull()
+            val storage = file?.let { storageOf(it.path) }
+            if (file == null || !file.exists() || storage == null) {
                 errors += OutputLine("df: $path: No such file or directory", isError = true)
                 continue
             }
-            val mount = mountOf(path, mounts)
+            val mount = mountOf(file.path, mounts)
             rows += DfRow(mount?.source ?: path, storage.total, storage.total - storage.free, storage.available, mount?.point ?: path)
         }
         val table = if (rows.isEmpty()) emptyList() else dfTable(rows.distinctBy { it.point }, 'h' in parsed.flags)

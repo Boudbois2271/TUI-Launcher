@@ -8,6 +8,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.StatFs
 import android.os.SystemClock
+import android.system.Os
 import android.view.Display
 import java.io.File
 
@@ -30,10 +31,16 @@ fun readLoadAverage(): List<Double>? = runCatching {
 
 fun kernelRelease(): String = System.getProperty("os.version") ?: "unknown"
 
-// The build part of /proc/version, such as "#1 SMP PREEMPT Wed Jun 1 12:00:00 CST 2022"
-fun kernelVersion(): String? = runCatching {
-    File("/proc/version").readText().substringAfter('#', "").trim().takeIf { it.isNotEmpty() }?.let { "#$it" }
-}.getOrNull()
+// The kernel's build, such as "#1 SMP PREEMPT Wed Jun 1 12:00:00 CST 2022", from uname(2) like GNU uname
+// (apps can't read /proc/version)
+fun kernelVersion(): String? = runCatching { Os.uname().version }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+// The time zone's abbreviation now, such as CEST, as the C library names it. Java only knows names like
+// GMT+02:00 for most zones, so the phone's own date prints it.
+fun zoneAbbreviation(): String? = runCatching {
+    val process = ProcessBuilder("/system/bin/date", "+%Z").redirectErrorStream(true).start()
+    process.inputStream.bufferedReader().readText().trim().also { process.waitFor() }
+}.getOrNull()?.takeIf { it.isNotEmpty() && ' ' !in it }
 
 fun machine(): String = System.getProperty("os.arch") ?: "unknown"
 

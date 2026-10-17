@@ -1,6 +1,7 @@
 package com.ilanmarchand.tui_launcher.commands
 
 import android.content.Context
+import com.ilanmarchand.tui_launcher.system.zoneAbbreviation
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -17,11 +18,12 @@ object DateCommand : BuiltinCommand {
 
     override fun run(context: Context, args: String): CommandResult {
         val words = splitShellWords(args) ?: return errorLines("date: unexpected EOF while looking for matching quote")
-        return date(words, ZonedDateTime.now())
+        return date(words, ZonedDateTime.now(), zoneAbbreviation())
     }
 }
 
-internal fun date(words: List<String>, now: ZonedDateTime): CommandResult {
+// zoneName: the local zone's abbreviation (CEST), used by %Z instead of Java's name for it
+internal fun date(words: List<String>, now: ZonedDateTime, zoneName: String? = null): CommandResult {
     var format = "%a %b %e %H:%M:%S %Z %Y"
     var utc = false
     for (word in words) {
@@ -36,11 +38,11 @@ internal fun date(words: List<String>, now: ZonedDateTime): CommandResult {
         }
     }
     val time = if (utc) now.withZoneSameInstant(ZoneId.of("UTC")) else now
-    return textLines(strftime(format, time).split('\n'))
+    return textLines(strftime(format, time, if (utc) "UTC" else zoneName).split('\n'))
 }
 
 // strftime, as used by date +FORMAT: %Y-%m-%d, %H:%M:%S, %a %b, %s, %Z… Unknown sequences are kept as typed.
-internal fun strftime(format: String, time: ZonedDateTime): String {
+internal fun strftime(format: String, time: ZonedDateTime, zoneName: String? = null): String {
     val out = StringBuilder()
     var i = 0
     while (i < format.length) {
@@ -91,7 +93,7 @@ internal fun strftime(format: String, time: ZonedDateTime): String {
                 'y' -> two(time.year % 100)
                 'Y' -> time.year.toString()
                 'z' -> DateTimeFormatter.ofPattern("xx", Locale.ROOT).format(time)
-                'Z' -> DateTimeFormatter.ofPattern("zzz", Locale.ENGLISH).format(time)
+                'Z' -> zoneName ?: DateTimeFormatter.ofPattern("zzz", Locale.ENGLISH).format(time)
                 '%' -> "%"
                 else -> "%$spec"
             }

@@ -126,7 +126,10 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     TacCommand,
     RevCommand,
     NlCommand,
-    SedCommand
+    SedCommand,
+    PrintfCommand,
+    TrueCommand,
+    FalseCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {
