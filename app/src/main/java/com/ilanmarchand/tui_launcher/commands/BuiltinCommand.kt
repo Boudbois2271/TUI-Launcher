@@ -8,8 +8,12 @@ sealed interface CommandResult {
     data object Clear : CommandResult
 
     // Lines printed in order, errors mixed with normal output as in a shell.
-    // No lines prints nothing, like a successful shell command.
-    data class Output(val lines: List<OutputLine>) : CommandResult
+    // No lines prints nothing, like a successful shell command. The exit status is 1 when an error line
+    // was printed, unless the command says otherwise (grep exits 1 when nothing matches).
+    data class Output(
+        val lines: List<OutputLine>,
+        val exitCode: Int = if (lines.any { it.isError }) 1 else 0
+    ) : CommandResult
 }
 
 data class OutputLine(val text: String, val isError: Boolean = false)
@@ -30,6 +34,10 @@ interface BuiltinCommand {
         get() = false
 
     fun run(context: Context, args: String): CommandResult
+
+    // In a pipeline, stdin is the output of the command before (null when there is none). Commands that
+    // read text, like grep, use it; the others ignore it.
+    fun run(context: Context, args: String, stdin: List<String>?): CommandResult = run(context, args)
 }
 
 // A typed line that names a built-in command, with the text after the name
@@ -48,7 +56,14 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     WpctlCommand,
     BrightnessctlCommand,
     ContactsCommand,
-    CallCommand
+    CallCommand,
+    EchoCommand,
+    GrepCommand,
+    HeadCommand,
+    TailCommand,
+    WcCommand,
+    SortCommand,
+    UniqCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {

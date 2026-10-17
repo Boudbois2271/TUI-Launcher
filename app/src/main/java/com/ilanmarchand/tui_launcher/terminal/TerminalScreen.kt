@@ -1,6 +1,7 @@
 package com.ilanmarchand.tui_launcher.terminal
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import androidx.activity.compose.BackHandler
@@ -58,8 +59,15 @@ import com.ilanmarchand.tui_launcher.apps.findByName
 import com.ilanmarchand.tui_launcher.apps.launch
 import com.ilanmarchand.tui_launcher.apps.loadLaunchableApps
 import com.ilanmarchand.tui_launcher.commands.CommandResult
+import com.ilanmarchand.tui_launcher.commands.OutputLine
 import com.ilanmarchand.tui_launcher.commands.findBuiltinCommand
+import com.ilanmarchand.tui_launcher.commands.splitShellWords
 import com.ilanmarchand.tui_launcher.log.appendToCommandLog
+import com.ilanmarchand.tui_launcher.shell.CommandRunner
+import com.ilanmarchand.tui_launcher.shell.ParseResult
+import com.ilanmarchand.tui_launcher.shell.ShellEffect
+import com.ilanmarchand.tui_launcher.shell.parseCommandLine
+import com.ilanmarchand.tui_launcher.shell.runCommandList
 import com.ilanmarchand.tui_launcher.ui.theme.Accent1
 import com.ilanmarchand.tui_launcher.ui.theme.Accent2
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalBackground
@@ -102,7 +110,6 @@ fun TerminalScreen() {
         history += TerminalLine.Command(name)
         if (name.isEmpty()) return
 
-        // An app name waits for the app list if it is still loading, so a command is never refused
         scope.launch {
             val logged = withContext(Dispatchers.IO) {
                 runCatching { appendToCommandLog(context, name) }
@@ -110,35 +117,22 @@ fun TerminalScreen() {
             if (logged.isFailure) {
                 history += TerminalLine.Output("could not write the log", isError = true)
             }
-            // Aliases rewrite the line before anything else reads it, like in a shell.
-            // The log keeps the line as typed.
-            val line = withContext(Dispatchers.IO) { expandAliases(name, AliasStore(context).all()) }
-            val builtin = findBuiltinCommand(line)
-            if (builtin != null) {
-                when (val result = withContext(Dispatchers.IO) { builtin.command.run(context, builtin.args) }) {
-                    CommandResult.Clear -> history.clear()
-                    is CommandResult.Output -> result.lines.forEach {
-                        history += TerminalLine.Output(it.text, it.isError)
+            when (val parsed = parseCommandLine(name)) {
+                is ParseResult.SyntaxError -> history += TerminalLine.Output(parsed.message, isError = true)
+                is ParseResult.Parsed -> withContext(Dispatchers.IO) {
+                    // Aliases are read once per line, so one defined on a line applies from the next line,
+                    // as in bash. The log keeps the line as typed.
+                    val aliases = AliasStore(context).all()
+                    val runner = CommandRunner { command, stdin -> runCommand(context, { apps }, command, stdin) }
+                    runCommandList(parsed.items, { expandAliases(it, aliases) }, runner) { effect ->
+                        withContext(Dispatchers.Main) {
+                            when (effect) {
+                                ShellEffect.ClearScreen -> history.clear()
+                                is ShellEffect.Print -> history += TerminalLine.Output(effect.line.text, effect.line.isError)
+                            }
+                        }
                     }
                 }
-                return@launch
-            }
-            val loaded = snapshotFlow { apps }.filterNotNull().first()
-            // Temporary: lists every launchable app's label, to check the names to type
-            if (line.equals("help launch", ignoreCase = true)) {
-                history += TerminalLine.Output("apps you can launch:")
-                loaded.forEach { history += TerminalLine.Output(it.label) }
-                return@launch
-            }
-            val app = loaded.findByName(line)
-            if (app == null) {
-                history += TerminalLine.Output("command not found: $line", isError = true)
-                return@launch
-            }
-            try {
-                app.launch(context)
-            } catch (e: ActivityNotFoundException) {
-                history += TerminalLine.Output("could not open $line", isError = true)
             }
         }
     }
@@ -211,6 +205,32 @@ private fun TerminalKeyboard(content: @Composable () -> Unit) {
         },
         content = content
     )
+}
+
+// Runs one command of a line: a built-in, the temporary `help launch`, or an app. An app name waits for the
+// app list if it is still loading, so no command is refused. Like bash, an unknown command exits with 127.
+private suspend fun runCommand(
+    context: Context,
+    apps: () -> List<LaunchableApp>?,
+    command: String,
+    stdin: List<String>?
+): CommandResult {
+    findBuiltinCommand(command)?.let { return it.command.run(context, it.args, stdin) }
+    val loaded = snapshotFlow(apps).filterNotNull().first()
+    // Temporary: lists every launchable app's label, to check the names to type
+    if (command.equals("help launch", ignoreCase = true)) {
+        return CommandResult.Output((listOf("apps you can launch:") + loaded.map { it.label }).map { OutputLine(it) })
+    }
+    // A label with a shell character, such as "Red & moi", is typed in quotes
+    val app = loaded.findByName(command)
+        ?: splitShellWords(command)?.joinToString(" ")?.let { loaded.findByName(it) }
+        ?: return CommandResult.Output(listOf(OutputLine("command not found: $command", isError = true)), exitCode = 127)
+    return try {
+        app.launch(context)
+        CommandResult.Output(emptyList())
+    } catch (e: ActivityNotFoundException) {
+        CommandResult.Output(listOf(OutputLine("could not open $command", isError = true)))
+    }
 }
 
 @Composable
