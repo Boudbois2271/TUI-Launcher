@@ -37,7 +37,8 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     AliasCommand,
     UnaliasCommand,
     DpmCommand,
-    RebootCommand
+    RebootCommand,
+    NmcliCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {
