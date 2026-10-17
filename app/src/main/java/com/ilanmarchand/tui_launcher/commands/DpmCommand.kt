@@ -10,6 +10,8 @@ import com.ilanmarchand.tui_launcher.admin.AdminReceiver
 // device owner and the admin. Usage lines and messages follow the real dpm of Android 11.
 object DpmCommand : BuiltinCommand {
     override val name = "dpm"
+    override val synopsis = "dpm remove-active-admin [ --user <USER_ID> | current ] <COMPONENT>"
+    override val summary = "Give up this launcher's device admin and device owner."
     override val takesArgs = true
 
     // Android user ids are uid / 100000

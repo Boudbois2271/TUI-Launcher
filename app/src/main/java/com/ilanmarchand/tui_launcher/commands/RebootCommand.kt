@@ -7,6 +7,8 @@ import com.ilanmarchand.tui_launcher.admin.AdminReceiver
 // Reboots the phone. Android lets only the device owner do this, through DevicePolicyManager.
 object RebootCommand : BuiltinCommand {
     override val name = "reboot"
+    override val synopsis = "reboot"
+    override val summary = "Restart the phone."
 
     override fun run(context: Context, args: String): CommandResult {
         val dpm = context.getSystemService(DevicePolicyManager::class.java)

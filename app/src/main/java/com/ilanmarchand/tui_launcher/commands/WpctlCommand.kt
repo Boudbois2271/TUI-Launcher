@@ -14,6 +14,8 @@ import kotlin.math.roundToInt
 // Usage, help and error texts are copied from the real wpctl.
 object WpctlCommand : BuiltinCommand {
     override val name = "wpctl"
+    override val synopsis = "wpctl get-volume | set-volume [-l LIMIT] | set-mute @DEFAULT_AUDIO_SINK@ ..."
+    override val summary = "Read or change the media volume, like WirePlumber's wpctl."
     override val takesArgs = true
 
     private const val STREAM = AudioManager.STREAM_MUSIC

@@ -9,6 +9,8 @@ import com.ilanmarchand.tui_launcher.accessibility.LockService
 // service is off. The other loginctl verbs don't exist on Android.
 object LoginctlCommand : BuiltinCommand {
     override val name = "loginctl"
+    override val synopsis = "loginctl lock-session"
+    override val summary = "Lock the screen."
     override val takesArgs = true
 
     private val VERBS = listOf(
@@ -38,7 +40,7 @@ object LoginctlCommand : BuiltinCommand {
             dpm.lockNow()
             error(
                 "Locked by the device admin, so the next unlock needs the PIN. " +
-                    "Turn on \"TUI-Launcher screen lock\" in the Accessibility settings to keep face unlock."
+                    "Turn on \"TUI-Launcher system actions\" in the Accessibility settings to keep face unlock."
             )
         } catch (e: SecurityException) {
             error("Failed to lock session: Access denied")

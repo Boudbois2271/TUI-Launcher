@@ -16,6 +16,8 @@ import com.ilanmarchand.tui_launcher.contacts.readContactNumbers
 //   call NAME        (call mom, call 'Jane DOE'; case and accents don't matter, part of a name works)
 object CallCommand : BuiltinCommand {
     override val name = "call"
+    override val synopsis = "call NUMBER | NAME"
+    override val summary = "Start a phone call to a number or a contact."
     override val takesArgs = true
 
     override fun run(context: Context, args: String): CommandResult {

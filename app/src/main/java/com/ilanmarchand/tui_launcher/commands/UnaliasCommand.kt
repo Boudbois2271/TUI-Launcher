@@ -6,6 +6,8 @@ import com.ilanmarchand.tui_launcher.aliases.AliasStore
 // bash's unalias: `unalias [-a] name [name ...]`. -a removes every alias.
 object UnaliasCommand : BuiltinCommand {
     override val name = "unalias"
+    override val synopsis = "unalias [-a] name [name ...]"
+    override val summary = "Remove each name from the list of defined aliases."
     override val takesArgs = true
 
     private const val USAGE = "unalias: usage: unalias [-a] name [name ...]"

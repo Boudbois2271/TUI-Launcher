@@ -1,6 +1,7 @@
 package com.ilanmarchand.tui_launcher.commands
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.location.LocationManager
 import android.net.wifi.ScanResult
@@ -18,6 +19,8 @@ import com.ilanmarchand.tui_launcher.admin.grantOwnPermission
 // Since Android 10, only a device owner may switch Wi-Fi or add networks.
 object NmcliCommand : BuiltinCommand {
     override val name = "nmcli"
+    override val synopsis = "nmcli radio wifi [on | off] | device wifi [list | connect <SSID> [password <pw>]]"
+    override val summary = "Switch Wi-Fi, list networks and join one, like NetworkManager's nmcli."
     override val takesArgs = true
 
     // Android names its Wi-Fi interface wlan0
@@ -87,6 +90,8 @@ object NmcliCommand : BuiltinCommand {
         }
     }
 
+    // locationProblem() grants the location permission before any Wi-Fi network is read
+    @SuppressLint("MissingPermission")
     private fun list(context: Context, args: List<String>): CommandResult {
         if (args.isNotEmpty()) return error("Error: invalid extra argument '${args[0]}'.")
         locationProblem(context)?.let { return error(it) }
@@ -116,6 +121,8 @@ object NmcliCommand : BuiltinCommand {
         return CommandResult.Output(formatTable(header, rows).map { OutputLine(it) })
     }
 
+    // locationProblem() grants the location permission before any Wi-Fi network is read
+    @SuppressLint("MissingPermission")
     private fun connect(context: Context, args: List<String>): CommandResult {
         val ssid = args.firstOrNull() ?: return error("Error: SSID or BSSID are missing.")
         var password: String? = null

@@ -7,6 +7,8 @@ import com.ilanmarchand.tui_launcher.aliases.AliasStore
 // name=value defines one, a bare name prints it. Values are used as typed, nothing is checked.
 object AliasCommand : BuiltinCommand {
     override val name = "alias"
+    override val synopsis = "alias [-p] [name[=value] ... ]"
+    override val summary = "Define or display aliases."
     override val takesArgs = true
 
     private const val USAGE = "alias: usage: alias [-p] [name[=value] ... ]"
