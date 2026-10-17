@@ -10,6 +10,9 @@ sealed interface ShellEffect {
 
     // The next typed line answers the question instead of being run
     data class Ask(val question: String, val answer: (String) -> CommandResult) : ShellEffect
+
+    // The nano editor takes the screen
+    data class Edit(val edit: CommandResult.Edit) : ShellEffect
 }
 
 // Runs one command, already alias-expanded, with the output of the command before it in a pipeline
@@ -95,7 +98,11 @@ private suspend fun runPipeline(
                 stdin = result.lines.filterNot { it.isError }.map { it.text }
                 status = result.exitCode
             }
-            is CommandResult.Ask -> Unit
+            // A question or the editor only happens at the end of a pipeline
+            is CommandResult.Ask, is CommandResult.Edit -> {
+                stdin = emptyList()
+                status = 0
+            }
         }
     }
     return status
@@ -157,5 +164,9 @@ suspend fun showResult(result: CommandResult, emit: suspend (ShellEffect) -> Uni
         result.lines.forEach { emit(ShellEffect.Print(it)) }
         emit(ShellEffect.Ask(result.question, result.answer))
         null
+    }
+    is CommandResult.Edit -> {
+        emit(ShellEffect.Edit(result))
+        0
     }
 }

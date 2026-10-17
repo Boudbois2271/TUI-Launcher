@@ -71,6 +71,7 @@ import com.ilanmarchand.tui_launcher.commands.variableValue
 import com.ilanmarchand.tui_launcher.commands.splitShellWords
 import com.ilanmarchand.tui_launcher.files.CurrentWorkspace
 import com.ilanmarchand.tui_launcher.files.WorkspaceRedirects
+import com.ilanmarchand.tui_launcher.files.writeWholeFile
 import com.ilanmarchand.tui_launcher.log.appendToCommandLog
 import com.ilanmarchand.tui_launcher.log.readCommandHistory
 import com.ilanmarchand.tui_launcher.shell.CommandRunner
@@ -142,9 +143,12 @@ fun TerminalScreen() {
     val variables = ShellVariables.variables
     // A question a command asked; the next typed line answers it
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
+    // The file nano has open; it takes the whole screen
+    var editing by remember { mutableStateOf<CommandResult.Edit?>(null) }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+    // Back in the terminal (at start, or after nano), the prompt takes the keyboard
+    LaunchedEffect(editing) {
+        if (editing == null) focusRequester.requestFocus()
     }
 
     // Shows what a command did, on the main thread
@@ -155,6 +159,7 @@ fun TerminalScreen() {
                 TerminalLine.Output(it.text, it.isError, it.accentLength)
             }
             is ShellEffect.Ask -> question = effect
+            is ShellEffect.Edit -> editing = effect.edit
         }
     }
 
@@ -230,6 +235,15 @@ fun TerminalScreen() {
         scope.launch { running.withLock { runLine(name) } }
     }
 
+    editing?.let { edit ->
+        NanoScreen(
+            edit = edit,
+            save = { text -> withContext(Dispatchers.IO) { writeWholeFile(CurrentWorkspace.get(context), edit.path, text) } },
+            onExit = { editing = null }
+        )
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -286,18 +300,21 @@ fun TerminalScreen() {
 // Tells the keyboard this is a terminal, the way Termux does: a visible-password field with no
 // suggestions, which keyboards such as Gboard never autocorrect (they ignore autoCorrectEnabled = false
 // on a plain text field). The keyboard is also asked not to learn what is typed, such as Wi-Fi passwords.
+// In multi-line mode (nano), the Enter key types a new line instead of submitting.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun TerminalKeyboard(content: @Composable () -> Unit) {
+internal fun TerminalKeyboard(multiLine: Boolean = false, content: @Composable () -> Unit) {
     InterceptPlatformTextInput(
         interceptor = { request, nextHandler ->
             val terminalRequest = PlatformTextInputMethodRequest { outAttributes ->
                 request.createInputConnection(outAttributes).also {
                     outAttributes.inputType = InputType.TYPE_CLASS_TEXT or
                         InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-                        InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                        InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                        (if (multiLine) InputType.TYPE_TEXT_FLAG_MULTI_LINE else 0)
                     outAttributes.imeOptions = outAttributes.imeOptions or
-                        EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+                        EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or
+                        (if (multiLine) EditorInfo.IME_FLAG_NO_ENTER_ACTION else 0)
                 }
             }
             nextHandler.startInputMethod(terminalRequest)

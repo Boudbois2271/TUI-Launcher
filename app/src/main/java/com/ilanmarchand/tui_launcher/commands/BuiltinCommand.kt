@@ -22,6 +22,9 @@ sealed interface CommandResult {
         val question: String,
         val answer: (String) -> CommandResult
     ) : CommandResult
+
+    // Opens the nano editor on a file: path is where it is, name how the user typed it, text what it holds
+    data class Edit(val path: String, val name: String, val text: String, val isNew: Boolean) : CommandResult
 }
 
 // A command that does more as root, reached through sudo (pacman -R and -S)
@@ -113,7 +116,8 @@ val builtinCommands: List<BuiltinCommand> = listOf(
     CpCommand,
     ExportCommand,
     UnsetCommand,
-    EnvCommand
+    EnvCommand,
+    NanoCommand
 )
 
 fun findBuiltinCommand(input: String): BuiltinCall? {
