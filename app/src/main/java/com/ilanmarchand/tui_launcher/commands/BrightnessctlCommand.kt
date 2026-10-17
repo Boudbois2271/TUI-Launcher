@@ -5,103 +5,48 @@ import android.content.Context
 import android.content.res.Resources
 import android.provider.Settings
 import com.ilanmarchand.tui_launcher.admin.AdminReceiver
+import com.ilanmarchand.tui_launcher.system.Torch
 import kotlin.math.roundToInt
 
-// brightnessctl, for the screen brightness:
-//   brightnessctl [-q] [-p] [info | get | max | set VALUE]   (also i, g, m, s)
-// VALUE is 500, 50%, +10, 50-, +10%, 50%- or 10%+, as in brightnessctl. Like brightnessctl, an unknown
-// operation shows the info. Brightness is Android's screen_brightness setting, written through the device
-// owner's setSystemSetting, so no "Modify system settings" permission is needed. Texts follow brightnessctl.
+// brightnessctl: brightnessctl [-lqpn] [-d DEVICE] [info | get | max | set VALUE]   (also i, g, m, s)
+// Two devices: lcd-backlight, the screen (Android's screen_brightness, written through the device owner's
+// setSystemSetting, so no "Modify system settings" permission is needed), and white:flash, the camera flash
+// as a torch, as Linux phones name their flash LED. VALUE is 500, 50%, +10, 50-, +10%, 50%- or 10%+.
+// Like brightnessctl, an unknown operation shows the info. Texts follow brightnessctl 0.5.
 object BrightnessctlCommand : BuiltinCommand {
     override val name = "brightnessctl"
-    override val synopsis = "brightnessctl [-q] [-p] [info | get | max | set VALUE]"
-    override val summary = "Read or change the screen brightness."
+    override val synopsis = "brightnessctl [-lqpn] [-d DEVICE] [info | get | max | set VALUE]"
+    override val summary = "Read or change the screen brightness, or the flash (-d white:flash)."
     override val takesArgs = true
-
-    // MediaTek phones name their screen backlight this way in /sys/class/leds
-    private const val DEVICE = "Device 'lcd-backlight' of class 'leds':"
-
-    private val HELP = listOf(
-        "brightnessctl 0.5 - read and control device brightness.",
-        "",
-        "Usage: brightnessctl [options] [operation] [value]",
-        "",
-        "Options:",
-        "  -l, --list\t\t\tlist devices with available brightness controls.",
-        "  -q, --quiet\t\t\tsuppress output.",
-        "  -p, --pretend\t\t\tdo not perform write operations.",
-        "  -m, --machine-readable\tproduce machine-readable output.",
-        "  -n, --min-value\t\tset minimum brightness, defaults to 1.",
-        "  -e, --exponent[=K]\t\tchanges percentage curve to exponential.",
-        "  -s, --save\t\t\tsave previous state in a temporary file.",
-        "  -r, --restore\t\t\trestore previous saved state.",
-        "  -h, --help\t\t\tprint this help.",
-        "  -d, --device=DEVICE\t\tspecify device name (can be a wildcard).",
-        "  -c, --class=CLASS\t\tspecify device class.",
-        "  -V, --version\t\t\tprint version and exit.",
-        "",
-        "Operations:",
-        "  i, info\t\t\tget device info.",
-        "  g, get\t\t\tget current brightness of the device.",
-        "  m, max\t\t\tget maximum brightness of the device.",
-        "  s, set VALUE\t\t\tset brightness of the device.",
-        "",
-        "Valid values:",
-        "  specific value\t\tExample: 500",
-        "  percentage value\t\tExample: 50%",
-        "  specific delta\t\tExample: 50- or +10",
-        "  percentage delta\t\tExample: 50%- or +10%"
-    )
 
     override fun run(context: Context, args: String): CommandResult {
         val words = splitShellWords(args)
-            ?: return error("brightnessctl: unexpected EOF while looking for matching quote")
-        var quiet = false
-        var pretend = false
-        val positional = mutableListOf<String>()
-        for (word in words) {
-            when (word) {
-                "-q", "--quiet" -> quiet = true
-                "-p", "--pretend" -> pretend = true
-                "-h", "--help" -> return lines(HELP)
-                else -> if (word.startsWith("-") && word.length > 1 && !word.drop(1).first().isDigit()) {
-                    return error("'brightnessctl $word' is not available on this phone.")
-                } else {
-                    positional += word
-                }
-            }
-        }
-        val resolver = context.contentResolver
-        val max = maxBrightness()
-        val current = Settings.System.getInt(resolver, Settings.System.SCREEN_BRIGHTNESS, max)
-        return when (positional.firstOrNull()) {
-            "g", "get" -> lines(listOf(current.toString()))
-            "m", "max" -> lines(listOf(max.toString()))
-            "s", "set" -> {
-                val value = positional.getOrNull(1) ?: return error("You need to provide a value to set.")
-                val target = brightnessTarget(value, current, max) ?: return error("Invalid value given")
-                if (!pretend) {
-                    val dpm = context.getSystemService(DevicePolicyManager::class.java)
-                    try {
-                        dpm.setSystemSetting(
-                            AdminReceiver.component(context), Settings.System.SCREEN_BRIGHTNESS, target.toString()
-                        )
-                    } catch (e: SecurityException) {
-                        return error("Can't modify brightness: Permission denied")
-                    }
-                }
-                if (quiet) lines(emptyList()) else lines(listOf("Updated device 'lcd-backlight':") + info(target, max))
-            }
-            // brightnessctl shows the info for info, for no operation and for an unknown one
-            else -> if (quiet) lines(emptyList()) else lines(info(current, max))
-        }
+            ?: return errorLines("brightnessctl: unexpected EOF while looking for matching quote")
+        return brightnessctl(words, devices(context))
     }
 
-    private fun info(current: Int, max: Int) = listOf(
-        DEVICE,
-        "\tCurrent brightness: $current (${(current * 100.0 / max).roundToInt()}%)",
-        "\tMax brightness: $max"
-    )
+    private fun devices(context: Context): List<BrightnessDevice> {
+        val backlight = BrightnessDevice(
+            name = "lcd-backlight",
+            max = maxBrightness(),
+            read = { Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 0) },
+            write = { value ->
+                runCatching {
+                    context.getSystemService(DevicePolicyManager::class.java).setSystemSetting(
+                        AdminReceiver.component(context), Settings.System.SCREEN_BRIGHTNESS, value.toString()
+                    )
+                }.isSuccess
+            }
+        )
+        if (!Torch.isAvailable(context)) return listOf(backlight)
+        val flash = BrightnessDevice(
+            name = "white:flash",
+            max = 1,
+            read = { if (Torch.isOn(context) == true) 1 else 0 },
+            write = { value -> Torch.set(context, value > 0) }
+        )
+        return listOf(backlight, flash)
+    }
 
     // The top of Android's brightness setting; MIUI raises it above the stock 255
     private fun maxBrightness(): Int {
@@ -109,15 +54,104 @@ object BrightnessctlCommand : BuiltinCommand {
         val id = resources.getIdentifier("config_screenBrightnessSettingMaximum", "integer", "android")
         return if (id != 0) resources.getInteger(id) else 255
     }
-
-    private fun lines(text: List<String>) = CommandResult.Output(text.map { OutputLine(it) })
-
-    private fun error(message: String) = CommandResult.Output(listOf(OutputLine(message, isError = true)))
 }
 
-// brightnessctl's VALUE: 500, 50%, +10, 50-, +10%, 50%-, 10%+. The result stays between min and max, and
-// brightnessctl's default minimum is 1. Null when VALUE isn't valid.
-internal fun brightnessTarget(value: String, current: Int, max: Int, min: Int = 1): Int? {
+// A brightness control. write returns false when Android refuses the change.
+internal class BrightnessDevice(val name: String, val max: Int, val read: () -> Int, val write: (Int) -> Boolean)
+
+private val BRIGHTNESSCTL_HELP = listOf(
+    "brightnessctl 0.5 - read and control device brightness.",
+    "",
+    "Usage: brightnessctl [options] [operation] [value]",
+    "",
+    "Options:",
+    "  -l, --list\t\t\tlist devices with available brightness controls.",
+    "  -q, --quiet\t\t\tsuppress output.",
+    "  -p, --pretend\t\t\tdo not perform write operations.",
+    "  -m, --machine-readable\tproduce machine-readable output.",
+    "  -n, --min-value\t\tset minimum brightness, defaults to 1.",
+    "  -e, --exponent[=K]\t\tchanges percentage curve to exponential.",
+    "  -s, --save\t\t\tsave previous state in a temporary file.",
+    "  -r, --restore\t\t\trestore previous saved state.",
+    "  -h, --help\t\t\tprint this help.",
+    "  -d, --device=DEVICE\t\tspecify device name (can be a wildcard).",
+    "  -c, --class=CLASS\t\tspecify device class.",
+    "  -V, --version\t\t\tprint version and exit.",
+    "",
+    "Operations:",
+    "  i, info\t\t\tget device info.",
+    "  g, get\t\t\tget current brightness of the device.",
+    "  m, max\t\t\tget maximum brightness of the device.",
+    "  s, set VALUE\t\t\tset brightness of the device.",
+    "",
+    "Valid values:",
+    "  specific value\t\tExample: 500",
+    "  percentage value\t\tExample: 50%",
+    "  specific delta\t\tExample: 50- or +10",
+    "  percentage delta\t\tExample: 50%- or +10%"
+)
+
+private val BRIGHTNESSCTL_LONG = mapOf(
+    "list" to 'l', "quiet" to 'q', "pretend" to 'p', "machine-readable" to 'm', "min-value" to 'n',
+    "exponent" to 'e', "save" to 's', "restore" to 'r', "help" to 'h', "device" to 'd', "class" to 'c',
+    "version" to 'V'
+)
+
+internal fun brightnessctl(words: List<String>, devices: List<BrightnessDevice>): CommandResult {
+    val args = when (val result = parseGnuArgs("brightnessctl", words, "lqpmnesrhV", "dc", BRIGHTNESSCTL_LONG)) {
+        is GnuArgsResult.Invalid -> return errorLines(result.message)
+        is GnuArgsResult.Parsed -> result.args
+    }
+    when {
+        'h' in args.flags -> return textLines(BRIGHTNESSCTL_HELP)
+        'V' in args.flags -> return textLines(listOf("0.5"))
+    }
+    args.flags.firstOrNull { it in "mesr" }?.let { return errorLines("'brightnessctl -$it' is not available on this phone.") }
+    if ('l' in args.flags) {
+        val blocks = devices.map { deviceInfo(it, it.read()) }
+        return textLines(listOf("Available devices:") + blocks.flatMapIndexed { index, block -> if (index == 0) block else listOf("") + block })
+    }
+    val pattern = args.values['d']?.last() ?: devices.first().name
+    val wanted = Regex(glob(pattern))
+    val classOk = args.values['c']?.last()?.let { it == "leds" } ?: true
+    val device = devices.firstOrNull { classOk && wanted.matches(it.name) }
+        ?: return errorLines("Device '$pattern' not found.")
+    val quiet = 'q' in args.flags
+    val current = device.read()
+    return when (args.operands.firstOrNull()) {
+        "g", "get" -> textLines(listOf(current.toString()))
+        "m", "max" -> textLines(listOf(device.max.toString()))
+        "s", "set" -> {
+            val value = args.operands.getOrNull(1) ?: return errorLines("You need to provide a value to set.")
+            val min = if ('n' in args.flags) 1 else 0
+            val target = brightnessTarget(value, current, device.max, min) ?: return errorLines("Invalid value given")
+            if ('p' !in args.flags && !device.write(target)) return errorLines("Can't modify brightness: Permission denied")
+            if (quiet) textLines(emptyList()) else textLines(listOf("Updated device '${device.name}':") + deviceInfo(device, target))
+        }
+        // brightnessctl shows the info for info, for no operation and for an unknown one
+        else -> if (quiet) textLines(emptyList()) else textLines(deviceInfo(device, current))
+    }
+}
+
+// A device name pattern where * and ? are wildcards
+private fun glob(pattern: String): String =
+    pattern.map { c ->
+        when (c) {
+            '*' -> ".*"
+            '?' -> "."
+            else -> Regex.escape(c.toString())
+        }
+    }.joinToString("")
+
+private fun deviceInfo(device: BrightnessDevice, current: Int) = listOf(
+    "Device '${device.name}' of class 'leds':",
+    "\tCurrent brightness: $current (${(current * 100.0 / device.max).roundToInt()}%)",
+    "\tMax brightness: ${device.max}"
+)
+
+// brightnessctl's VALUE: 500, 50%, +10, 50-, +10%, 50%-, 10%+. The result stays between min and max; min is
+// 0, or 1 with -n. Null when VALUE isn't valid.
+internal fun brightnessTarget(value: String, current: Int, max: Int, min: Int = 0): Int? {
     val match = Regex("""^(\+)?(\d+)(%)?([+-])?$""").matchEntire(value) ?: return null
     val (plus, number, percent, suffix) = match.destructured
     if (plus.isNotEmpty() && suffix.isNotEmpty()) return null

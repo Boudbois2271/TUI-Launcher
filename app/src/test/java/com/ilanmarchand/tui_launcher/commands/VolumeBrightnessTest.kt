@@ -54,9 +54,10 @@ class VolumeBrightnessTest {
     @Test
     fun brightnessStaysInRange() {
         assertEquals(2047, brightnessTarget("200%", 1000, 2047))
-        assertEquals(1, brightnessTarget("0", 1000, 2047))
-        assertEquals(1, brightnessTarget("100%-", 1000, 2047))
-        assertEquals(0, brightnessTarget("0", 1000, 2047, min = 0))
+        // Like brightnessctl: 0 is allowed, and -n raises the minimum to 1
+        assertEquals(0, brightnessTarget("0", 1000, 2047))
+        assertEquals(0, brightnessTarget("100%-", 1000, 2047))
+        assertEquals(1, brightnessTarget("0", 1000, 2047, min = 1))
     }
 
     @Test

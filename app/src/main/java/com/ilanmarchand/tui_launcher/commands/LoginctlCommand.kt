@@ -40,7 +40,7 @@ object LoginctlCommand : BuiltinCommand {
             dpm.lockNow()
             error(
                 "Locked by the device admin, so the next unlock needs the PIN. " +
-                    "Turn on \"TUI-Launcher screen lock\" in the Accessibility settings to keep face unlock."
+                    "Turn on \"TUI-Launcher system actions\" in the Accessibility settings to keep face unlock."
             )
         } catch (e: SecurityException) {
             error("Failed to lock session: Access denied")
