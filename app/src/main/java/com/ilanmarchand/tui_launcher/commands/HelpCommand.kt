@@ -23,6 +23,7 @@ internal fun help(patterns: List<String>, commands: List<BuiltinCommand>): Comma
             "TUI-Launcher shell. These commands are built in.  Type `help' to see this list.",
             "Type `help name' to find out more about the command `name'.",
             "Anything else is an alias or an app: see `compgen -a' and `compgen -c'.",
+            "An app name followed by -s QUERY searches inside that app.",
             ""
         )
         return textLines(header + sorted.map { " ${it.synopsis}" })

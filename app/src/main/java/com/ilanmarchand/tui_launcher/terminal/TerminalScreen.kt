@@ -57,6 +57,8 @@ import com.ilanmarchand.tui_launcher.apps.LaunchableApp
 import com.ilanmarchand.tui_launcher.apps.findByName
 import com.ilanmarchand.tui_launcher.apps.launch
 import com.ilanmarchand.tui_launcher.apps.loadLaunchableApps
+import com.ilanmarchand.tui_launcher.apps.searchInApp
+import com.ilanmarchand.tui_launcher.apps.splitAppSearch
 import com.ilanmarchand.tui_launcher.commands.CommandResult
 import com.ilanmarchand.tui_launcher.commands.OutputLine
 import com.ilanmarchand.tui_launcher.commands.findBuiltinCommand
@@ -231,13 +233,22 @@ private suspend fun runCommand(
     // A label with a shell character, such as "Red & moi", is typed in quotes
     val app = loaded.findByName(command)
         ?: splitShellWords(command)?.joinToString(" ")?.let { loaded.findByName(it) }
-        ?: return CommandResult.Output(listOf(OutputLine("command not found: $command", isError = true)), exitCode = 127)
+        ?: return searchApp(context, loaded, command)
     return try {
         app.launch(context)
         CommandResult.Output(emptyList())
     } catch (e: ActivityNotFoundException) {
         CommandResult.Output(listOf(OutputLine("could not open $command", isError = true)))
     }
+}
+
+// `<app> -s QUERY` searches inside the app; any other unknown line is bash's "command not found"
+private fun searchApp(context: Context, apps: List<LaunchableApp>, command: String): CommandResult {
+    val notFound = CommandResult.Output(listOf(OutputLine("command not found: $command", isError = true)), exitCode = 127)
+    val (label, query) = splitAppSearch(command) ?: return notFound
+    val app = apps.findByName(label) ?: return notFound
+    if (searchInApp(context, app, query)) return CommandResult.Output(emptyList())
+    return CommandResult.Output(listOf(OutputLine("${app.label}: this app offers no search to other apps", isError = true)))
 }
 
 @Composable
