@@ -176,12 +176,11 @@ fun TerminalScreen() {
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
     // The file nano has open; it takes the whole screen
     var editing by remember { mutableStateOf<CommandResult.Edit?>(null) }
-    // Up and Down walk the command log, as bash's history does. recalled is the log, read when walking starts
-    // (null when not walking); recallIndex is the place in it, and the size of the log is the line being typed.
-    // draft is that line, kept while walking.
-    var recalled by remember { mutableStateOf<List<String>?>(null) }
+    // Up and Down walk the command log, as bash's history does. walk holds one working copy per line: the log,
+    // then the line being typed when the walk started (null when not walking). Edits go to the copy being shown,
+    // so they stay while walking; Enter ends the walk and drops the copies, as in bash. recallIndex is the copy shown.
+    var walk by remember { mutableStateOf<MutableList<String>?>(null) }
     var recallIndex by remember { mutableStateOf(0) }
-    var draft by remember { mutableStateOf("") }
     // Taps of Up or Down wait for each other, so the log is read once
     val recallLock = remember { Mutex() }
 
@@ -276,8 +275,8 @@ fun TerminalScreen() {
     }
 
     fun submit(line: String) {
-        // The next Up starts again from the log, which now has this line
-        recalled = null
+        // The walk ends: the line is run, and the next Up starts again from the log, which now has it
+        walk = null
         val name = line.trim()
         question?.let { asked ->
             question = null
@@ -308,8 +307,7 @@ fun TerminalScreen() {
             if (fieldValue.text != typed) return@launch
             when (result) {
                 is Completion.Insert -> {
-                    // The completed line is the new line to type on, so a walk through the history starts again
-                    recalled = null
+                    walk?.set(recallIndex, result.line)
                     setInput(result.line)
                     tabPending = null
                 }
@@ -329,23 +327,16 @@ fun TerminalScreen() {
     fun recallHistory(older: Boolean) {
         scope.launch {
             recallLock.withLock {
-                val log = recalled ?: withContext(Dispatchers.IO) {
+                val copies = walk ?: withContext(Dispatchers.IO) {
                     runCatching { readCommandHistory(context) }.getOrDefault(emptyList())
-                }.also {
-                    recalled = it
-                    recallIndex = it.size
-                    draft = fieldValue.text
+                }.plus(fieldValue.text).toMutableList().also {
+                    walk = it
+                    recallIndex = it.lastIndex
                 }
-                val next = if (older) recallIndex - 1 else recallIndex + 1
-                when (next) {
-                    in log.indices -> {
-                        recallIndex = next
-                        setInput(log[next])
-                    }
-                    log.size -> {
-                        recallIndex = next
-                        setInput(draft)
-                    }
+                val next = (if (older) recallIndex - 1 else recallIndex + 1).coerceIn(0, copies.lastIndex)
+                if (next != recallIndex) {
+                    recallIndex = next
+                    setInput(copies[next])
                 }
             }
         }
@@ -405,11 +396,11 @@ fun TerminalScreen() {
                 // Enter on a hardware keyboard or from pasted text, submits instead: like bash, each pasted
                 // line runs as its own command.
                 onValueChange = { typed ->
-                    // Typing or deleting makes the line the new one: Up starts again from it, and Down has no draft to go back to
-                    recalled = null
                     val lines = typed.text.split('\n')
                     lines.dropLast(1).forEach(::submit)
                     fieldValue = if (lines.size == 1) typed else TextFieldValue(lines.last(), TextRange(lines.last().length))
+                    // The edit goes to the copy being shown, so it is still there when Up or Down come back to it
+                    walk?.set(recallIndex, fieldValue.text)
                 },
                 modifier = Modifier
                     .noTextSelection()
