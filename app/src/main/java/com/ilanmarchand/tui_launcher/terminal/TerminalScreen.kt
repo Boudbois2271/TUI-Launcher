@@ -24,9 +24,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,11 +46,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalContext
@@ -153,11 +154,6 @@ fun TerminalScreen() {
     // Lines running or waiting their turn. Back interrupts them, as Ctrl+C would in a terminal.
     val jobs = remember { mutableStateListOf<Job>() }
     BackHandler(enabled = jobs.isNotEmpty()) { jobs.toList().forEach { it.cancel() } }
-    val interruptOnBack: (KeyEvent) -> Boolean = { event ->
-        val interrupts = event.key == Key.Back && jobs.isNotEmpty()
-        if (interrupts && event.type == KeyEventType.KeyUp) jobs.toList().forEach { it.cancel() }
-        interrupts
-    }
     val variables = ShellVariables.variables
     // A question a command asked; the next typed line answers it
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
@@ -283,11 +279,8 @@ fun TerminalScreen() {
 
     Column(
         modifier = Modifier
-            // Back interrupts a running command with one press, like Ctrl+C. It is caught before the
-            // keyboard, which would only hide itself, and before the prompt's text field, which would drop
-            // its focus.
-            .onPreInterceptKeyBeforeSoftKeyboard(interruptOnBack)
-            .onPreviewKeyEvent(interruptOnBack)
+            // Back interrupts a running command with one press, like Ctrl+C, and never hides the keyboard
+            .backKeepsKeyboard { jobs.toList().forEach { it.cancel() } }
             .fillMaxSize()
             .background(TerminalBackground)
             .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -346,9 +339,33 @@ fun TerminalScreen() {
 // suggestions, which keyboards such as Gboard never autocorrect (they ignore autoCorrectEnabled = false
 // on a plain text field). The keyboard is also asked not to learn what is typed, such as Wi-Fi passwords.
 // In multi-line mode (nano), the Enter key types a new line instead of submitting.
+// Back never reaches the keyboard, which would hide itself on Back. The key is taken before the keyboard
+// on both press and release, and onBack runs on release, as Android's own Back does.
+internal fun Modifier.backKeepsKeyboard(onBack: () -> Unit): Modifier =
+    onPreInterceptKeyBeforeSoftKeyboard { event ->
+        val isBack = event.key == Key.Back
+        if (isBack && event.type == KeyEventType.KeyUp) onBack()
+        isBack
+    }
+
+// The text field's drag handle, which Compose draws in the selection handle color, is made transparent here.
+// The field stays editable; the handle is only hidden.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TerminalKeyboard(multiLine: Boolean = false, content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalTextSelectionColors provides TextSelectionColors(
+            handleColor = Color.Transparent,
+            backgroundColor = LocalTextSelectionColors.current.backgroundColor
+        )
+    ) {
+        TerminalKeyboardInput(multiLine, content)
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun TerminalKeyboardInput(multiLine: Boolean, content: @Composable () -> Unit) {
     InterceptPlatformTextInput(
         interceptor = { request, nextHandler ->
             val terminalRequest = PlatformTextInputMethodRequest { outAttributes ->

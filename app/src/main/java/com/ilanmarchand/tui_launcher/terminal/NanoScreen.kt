@@ -85,6 +85,8 @@ fun NanoScreen(edit: CommandResult.Edit, save: suspend (String) -> String?, onEx
 
     Column(
         modifier = Modifier
+            // Back leaves nano and never hides the keyboard
+            .backKeepsKeyboard { exit() }
             .fillMaxSize()
             .background(TerminalBackground)
             .windowInsetsPadding(WindowInsets.safeDrawing)
