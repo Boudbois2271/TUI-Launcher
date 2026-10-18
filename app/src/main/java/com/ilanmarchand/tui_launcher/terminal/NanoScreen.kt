@@ -109,6 +109,7 @@ fun NanoScreen(edit: CommandResult.Edit, save: suspend (String) -> String?, onEx
                     status = ""
                 },
                 modifier = Modifier
+                    .noTextSelection()
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)

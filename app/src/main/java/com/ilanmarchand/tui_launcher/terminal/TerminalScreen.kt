@@ -54,6 +54,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -317,6 +319,7 @@ fun TerminalScreen() {
                     input = lines.last()
                 },
                 modifier = Modifier
+                    .noTextSelection()
                     .fillMaxWidth()
                     .focusRequester(focusRequester),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
@@ -351,6 +354,16 @@ internal fun Modifier.backKeepsKeyboard(onBack: () -> Unit): Modifier =
         if (isBack && event.type == KeyEventType.KeyUp) onBack()
         isBack
     }
+
+// Takes every press before the text field sees it, so it starts no text selection, no drag handle and no
+// magnifier. The field still types; only its own press gestures are lost.
+internal fun Modifier.noTextSelection(): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+        }
+    }
+}
 
 // Shows no context menu, so a long press on the text field opens no Paste or Autofill popup
 private object NoTextContextMenu : TextContextMenuProvider {
