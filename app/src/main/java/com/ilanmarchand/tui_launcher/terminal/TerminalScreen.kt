@@ -62,9 +62,11 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
@@ -78,6 +80,8 @@ import com.ilanmarchand.tui_launcher.apps.loadLaunchableApps
 import com.ilanmarchand.tui_launcher.apps.searchInApp
 import com.ilanmarchand.tui_launcher.apps.splitAppSearch
 import com.ilanmarchand.tui_launcher.commands.CommandResult
+import com.ilanmarchand.tui_launcher.completion.Completion
+import com.ilanmarchand.tui_launcher.completion.complete as completeLine
 import com.ilanmarchand.tui_launcher.commands.OutputLine
 import com.ilanmarchand.tui_launcher.commands.findBuiltinCommand
 import com.ilanmarchand.tui_launcher.commands.shellBuiltinVariables
@@ -153,7 +157,11 @@ fun TerminalScreen() {
         onDispose { launcherApps.unregisterCallback(callback) }
     }
     val history = remember { mutableStateListOf<TerminalLine>() }
-    var input by remember { mutableStateOf("") }
+    var fieldValue by remember { mutableStateOf(TextFieldValue()) }
+    // Replaces the line and puts the cursor at its end, as when a completion or a history line fills it in
+    fun setInput(text: String) {
+        fieldValue = TextFieldValue(text, TextRange(text.length))
+    }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     // Lines run one after another, as in bash, even when typed while a command is still running
@@ -166,6 +174,14 @@ fun TerminalScreen() {
     var question by remember { mutableStateOf<ShellEffect.Ask?>(null) }
     // The file nano has open; it takes the whole screen
     var editing by remember { mutableStateOf<CommandResult.Edit?>(null) }
+    // Up and Down walk the command log, as bash's history does. recalled is the log, read when walking starts
+    // (null when not walking); recallIndex is the place in it, and the size of the log is the line being typed.
+    // draft is that line, kept while walking.
+    var recalled by remember { mutableStateOf<List<String>?>(null) }
+    var recallIndex by remember { mutableStateOf(0) }
+    var draft by remember { mutableStateOf("") }
+    // Taps of Up or Down wait for each other, so the log is read once
+    val recallLock = remember { Mutex() }
 
     // Back in the terminal (at start, or after nano), the prompt takes the keyboard
     LaunchedEffect(editing) {
@@ -258,13 +274,14 @@ fun TerminalScreen() {
     }
 
     fun submit(line: String) {
+        // The next Up starts again from the log, which now has this line
+        recalled = null
         val name = line.trim()
         question?.let { asked ->
             question = null
             history += TerminalLine.Command(name, asked.question)
             launchLine {
-                // Like every submitted line, the answer is logged
-                withContext(Dispatchers.IO) { runCatching { appendToCommandLog(context, name) } }
+                // An answer, such as pacman's y, is not a command: it is not logged, so Up never recalls it
                 val result = runInterruptible(Dispatchers.IO) { asked.answer(name) }
                 showResult(result) { show(it) }?.let { variables.lastStatus = it }
             }
@@ -273,6 +290,61 @@ fun TerminalScreen() {
         history += TerminalLine.Command(name)
         if (name.isEmpty()) return
         launchLine { runLine(name) }
+    }
+
+    // The line Tab last found nothing more to fill in for. As in bash, the next Tab on the same line lists the matches.
+    var tabPending by remember { mutableStateOf<String?>(null) }
+    // Tab completes the word before the cursor, as bash does. Reads the files and aliases off the main thread.
+    fun complete() {
+        val typed = fieldValue.text
+        val known = apps.orEmpty()
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                completeLine(typed, commandNames(context, known)) { folderEntries(context, it) }
+            }
+            // Typing went on meanwhile: the result is for a line that is gone
+            if (fieldValue.text != typed) return@launch
+            when (result) {
+                is Completion.Insert -> {
+                    setInput(result.line)
+                    tabPending = null
+                }
+                is Completion.Ambiguous -> if (tabPending == typed) {
+                    history += TerminalLine.Output(result.names.joinToString("  "))
+                    tabPending = null
+                } else {
+                    tabPending = typed
+                }
+                Completion.None -> tabPending = null
+            }
+        }
+    }
+
+    // Up goes to the previous command, Down to the next, and past the last one back to the line being typed.
+    // At either end nothing changes, as in bash.
+    fun recallHistory(older: Boolean) {
+        scope.launch {
+            recallLock.withLock {
+                val log = recalled ?: withContext(Dispatchers.IO) {
+                    runCatching { readCommandHistory(context) }.getOrDefault(emptyList())
+                }.also {
+                    recalled = it
+                    recallIndex = it.size
+                    draft = fieldValue.text
+                }
+                val next = if (older) recallIndex - 1 else recallIndex + 1
+                when (next) {
+                    in log.indices -> {
+                        recallIndex = next
+                        setInput(log[next])
+                    }
+                    log.size -> {
+                        recallIndex = next
+                        setInput(draft)
+                    }
+                }
+            }
+        }
     }
 
     editing?.let { edit ->
@@ -288,6 +360,11 @@ fun TerminalScreen() {
         modifier = Modifier
             // Back interrupts a running command with one press, like Ctrl+C, and never hides the keyboard
             .backKeepsKeyboard { jobs.toList().forEach { it.cancel() } }
+            .promptKeys(
+                onTab = { complete() },
+                onUp = { recallHistory(older = true) },
+                onDown = { recallHistory(older = false) }
+            )
             .fillMaxSize()
             .background(TerminalBackground)
             .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -310,14 +387,14 @@ fun TerminalScreen() {
         }
         TerminalKeyboard {
             BasicTextField(
-                value = input,
+                value = fieldValue,
                 // The field holds several lines so a long command wraps under the prompt. A new line, from
                 // Enter on a hardware keyboard or from pasted text, submits instead: like bash, each pasted
                 // line runs as its own command.
                 onValueChange = { typed ->
-                    val lines = typed.split('\n')
+                    val lines = typed.text.split('\n')
                     lines.dropLast(1).forEach(::submit)
-                    input = lines.last()
+                    fieldValue = if (lines.size == 1) typed else TextFieldValue(lines.last(), TextRange(lines.last().length))
                 },
                 modifier = Modifier
                     .noTextSelection()
@@ -335,8 +412,8 @@ fun TerminalScreen() {
                     imeAction = ImeAction.Done
                 ),
                 keyboardActions = KeyboardActions(onDone = {
-                    submit(input)
-                    input = ""
+                    submit(fieldValue.text)
+                    fieldValue = TextFieldValue()
                 })
             )
         }
