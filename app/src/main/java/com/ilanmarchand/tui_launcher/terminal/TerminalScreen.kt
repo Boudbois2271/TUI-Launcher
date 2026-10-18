@@ -308,6 +308,8 @@ fun TerminalScreen() {
             if (fieldValue.text != typed) return@launch
             when (result) {
                 is Completion.Insert -> {
+                    // The completed line is the new line to type on, so a walk through the history starts again
+                    recalled = null
                     setInput(result.line)
                     tabPending = null
                 }
@@ -403,6 +405,8 @@ fun TerminalScreen() {
                 // Enter on a hardware keyboard or from pasted text, submits instead: like bash, each pasted
                 // line runs as its own command.
                 onValueChange = { typed ->
+                    // Typing or deleting makes the line the new one: Up starts again from it, and Down has no draft to go back to
+                    recalled = null
                     val lines = typed.text.split('\n')
                     lines.dropLast(1).forEach(::submit)
                     fieldValue = if (lines.size == 1) typed else TextFieldValue(lines.last(), TextRange(lines.last().length))
