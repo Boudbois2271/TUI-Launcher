@@ -24,6 +24,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuDropdownProvider
+import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuToolbarProvider
+import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuDataProvider
+import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuProvider
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.MaterialTheme
@@ -348,8 +352,13 @@ internal fun Modifier.backKeepsKeyboard(onBack: () -> Unit): Modifier =
         isBack
     }
 
+// Shows no context menu, so a long press on the text field opens no Paste or Autofill popup
+private object NoTextContextMenu : TextContextMenuProvider {
+    override suspend fun showTextContextMenu(dataProvider: TextContextMenuDataProvider) = Unit
+}
+
 // The text field's drag handle, which Compose draws in the selection handle color, is made transparent here.
-// The field stays editable; the handle is only hidden.
+// The field stays editable; the handle is only hidden. The context menu is replaced by NoTextContextMenu.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TerminalKeyboard(multiLine: Boolean = false, content: @Composable () -> Unit) {
@@ -357,7 +366,9 @@ internal fun TerminalKeyboard(multiLine: Boolean = false, content: @Composable (
         LocalTextSelectionColors provides TextSelectionColors(
             handleColor = Color.Transparent,
             backgroundColor = LocalTextSelectionColors.current.backgroundColor
-        )
+        ),
+        LocalTextContextMenuDropdownProvider provides NoTextContextMenu,
+        LocalTextContextMenuToolbarProvider provides NoTextContextMenu
     ) {
         TerminalKeyboardInput(multiLine, content)
     }
