@@ -33,8 +33,9 @@ interface RootCommand : BuiltinCommand {
 }
 
 // accentLength: how many leading characters are drawn in the accent color, such as fastfetch's keys.
+// isDirectory: the whole line is drawn as a folder, as ls --color does.
 // A pipe passes only the text on, like a real tool that drops colors when piped.
-data class OutputLine(val text: String, val isError: Boolean = false, val accentLength: Int = 0)
+data class OutputLine(val text: String, val isError: Boolean = false, val accentLength: Int = 0, val isDirectory: Boolean = false)
 
 // A command typed by its name, like an app. Each one lives in its own file.
 // run() is called on a background thread, so it may read files and preferences.

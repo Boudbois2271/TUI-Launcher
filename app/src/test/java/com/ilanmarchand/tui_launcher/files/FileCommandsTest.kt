@@ -73,8 +73,8 @@ class FileCommandsTest {
             ),
             ls(listOf("notes", "nosuch"), workspace, 0)
         )
-        // Directories are drawn in the accent color
-        assertEquals(OutputLine("notes", accentLength = 5), (ls(emptyList(), workspace, 0) as CommandResult.Output).lines[1])
+        // Directories are drawn in their own color, not the accent
+        assertEquals(OutputLine("notes", isDirectory = true), (ls(emptyList(), workspace, 0) as CommandResult.Output).lines[1])
         val long = texts(ls(listOf("-l", "notes"), workspace, System.currentTimeMillis()))
         assertEquals("total 4", long[0])
         assertTrue(long[1], long[1].matches(Regex("""-rw[-x][-r][-w][-x][-r][-w][-x] +\d+ \S+ +\S+ +10 \w{3} [ \d]\d \d\d:\d\d shop\.md""")))

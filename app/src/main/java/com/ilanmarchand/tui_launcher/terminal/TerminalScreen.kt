@@ -105,6 +105,7 @@ import com.ilanmarchand.tui_launcher.system.PROMPT
 import com.ilanmarchand.tui_launcher.ui.theme.Accent1
 import com.ilanmarchand.tui_launcher.ui.theme.Accent2
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalBackground
+import com.ilanmarchand.tui_launcher.ui.theme.TerminalDirectory
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalForeground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
@@ -120,7 +121,7 @@ import kotlinx.coroutines.withContext
 private sealed interface TerminalLine {
     // prompt: the shell's prompt, or the question a command asked
     data class Command(val input: String, val prompt: String = PROMPT) : TerminalLine
-    data class Output(val text: String, val isError: Boolean = false, val accentLength: Int = 0) : TerminalLine
+    data class Output(val text: String, val isError: Boolean = false, val accentLength: Int = 0, val isDirectory: Boolean = false) : TerminalLine
 }
 
 @Composable
@@ -176,7 +177,7 @@ fun TerminalScreen() {
         when (effect) {
             ShellEffect.ClearScreen -> history.clear()
             is ShellEffect.Print -> history += effect.line.let {
-                TerminalLine.Output(it.text, it.isError, it.accentLength)
+                TerminalLine.Output(it.text, it.isError, it.accentLength, it.isDirectory)
             }
             is ShellEffect.Ask -> question = effect
             is ShellEffect.Edit -> editing = effect.edit
@@ -469,7 +470,11 @@ private fun TerminalLineText(line: TerminalLine) {
                 withStyle(SpanStyle(color = Accent1)) { append(line.text.take(line.accentLength)) }
                 append(line.text.drop(line.accentLength))
             },
-            color = if (line.isError) Accent2 else TerminalForeground
+            color = when {
+                line.isError -> Accent2
+                line.isDirectory -> TerminalDirectory
+                else -> TerminalForeground
+            }
         )
     }
 }

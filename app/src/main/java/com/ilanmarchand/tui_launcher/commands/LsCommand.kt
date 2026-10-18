@@ -81,7 +81,7 @@ internal fun ls(words: List<String>, workspace: Workspace, now: Long): CommandRe
 }
 
 private fun entryLines(entries: List<Pair<String, File>>, long: Boolean, human: Boolean, now: Long): List<OutputLine> {
-    if (!long) return entries.map { (name, file) -> OutputLine(name, accentLength = if (file.isDirectory) name.length else 0) }
+    if (!long) return entries.map { (name, file) -> OutputLine(name, isDirectory = file.isDirectory) }
     val rows = entries.map { (name, file) ->
         listOf(mode(file), links(file), owner(file), group(file), if (human) dfHumanSize(file.length()) else file.length().toString(), date(file.lastModified(), now), name)
     }
