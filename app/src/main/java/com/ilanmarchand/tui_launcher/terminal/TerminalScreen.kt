@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.UserHandle
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -347,6 +349,15 @@ fun TerminalScreen() {
         }
     }
 
+    // The soft keyboard's Tab and arrows, as the prompt's key codes
+    fun promptKey(keyCode: Int) {
+        when (keyCode) {
+            KeyEvent.KEYCODE_TAB -> complete()
+            KeyEvent.KEYCODE_DPAD_UP -> recallHistory(older = true)
+            KeyEvent.KEYCODE_DPAD_DOWN -> recallHistory(older = false)
+        }
+    }
+
     editing?.let { edit ->
         NanoScreen(
             edit = edit,
@@ -385,7 +396,7 @@ fun TerminalScreen() {
                 TerminalLineText(line)
             }
         }
-        TerminalKeyboard {
+        TerminalKeyboard(onPromptKey = ::promptKey) {
             BasicTextField(
                 value = fieldValue,
                 // The field holds several lines so a long command wraps under the prompt. A new line, from
@@ -452,7 +463,7 @@ private object NoTextContextMenu : TextContextMenuProvider {
 // The field stays editable; the handle is only hidden. The context menu is replaced by NoTextContextMenu.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun TerminalKeyboard(multiLine: Boolean = false, content: @Composable () -> Unit) {
+internal fun TerminalKeyboard(multiLine: Boolean = false, onPromptKey: ((Int) -> Unit)? = null, content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalTextSelectionColors provides TextSelectionColors(
             handleColor = Color.Transparent,
@@ -461,17 +472,18 @@ internal fun TerminalKeyboard(multiLine: Boolean = false, content: @Composable (
         LocalTextContextMenuDropdownProvider provides NoTextContextMenu,
         LocalTextContextMenuToolbarProvider provides NoTextContextMenu
     ) {
-        TerminalKeyboardInput(multiLine, content)
+        TerminalKeyboardInput(multiLine, onPromptKey, content)
     }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun TerminalKeyboardInput(multiLine: Boolean, content: @Composable () -> Unit) {
+private fun TerminalKeyboardInput(multiLine: Boolean, onPromptKey: ((Int) -> Unit)?, content: @Composable () -> Unit) {
+    val currentOnPromptKey by rememberUpdatedState(onPromptKey)
     InterceptPlatformTextInput(
         interceptor = { request, nextHandler ->
             val terminalRequest = PlatformTextInputMethodRequest { outAttributes ->
-                request.createInputConnection(outAttributes).also {
+                request.createInputConnection(outAttributes).let { base ->
                     outAttributes.inputType = InputType.TYPE_CLASS_TEXT or
                         InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
                         InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
@@ -479,6 +491,8 @@ private fun TerminalKeyboardInput(multiLine: Boolean, content: @Composable () ->
                     outAttributes.imeOptions = outAttributes.imeOptions or
                         EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or
                         (if (multiLine) EditorInfo.IME_FLAG_NO_ENTER_ACTION else 0)
+                    // Only the prompt takes Tab and the arrows; nano keeps them
+                    currentOnPromptKey?.let { onKey -> PromptKeyInput(base) { onKey(it) } } ?: base
                 }
             }
             nextHandler.startInputMethod(terminalRequest)
