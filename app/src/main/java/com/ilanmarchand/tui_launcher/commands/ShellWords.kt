@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.commands
 
 // Splits a line into words with bash quoting: blanks separate words, single quotes keep everything

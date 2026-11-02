@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.commands
 
 // GNU cut: cut -f LIST [-d DELIM] [-s] | -c LIST [FILE...]  Keeps the chosen fields (TAB-separated unless -d

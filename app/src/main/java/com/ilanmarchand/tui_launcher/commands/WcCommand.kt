@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.commands
 
 // GNU wc: wc [-lwmc] [FILE...]  Lines, words, characters and bytes, in that order; lines, words and bytes by

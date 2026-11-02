@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.completion
 
 // What Tab does to the line, as bash does with its default completion

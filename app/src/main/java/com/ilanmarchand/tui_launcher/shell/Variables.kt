@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.shell
 
 // The variables set in the shell (NAME=value), which of them are exported (export, listed by env), and the

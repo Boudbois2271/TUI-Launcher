@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.commands
 
 // GNU uniq: uniq [-cdui] [INPUT]  Folds runs of the same line into one. -c counts them, -d keeps only repeated

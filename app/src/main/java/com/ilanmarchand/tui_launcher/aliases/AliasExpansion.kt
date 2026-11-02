@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.aliases
 
 // Alias expansion as in bash: the first word of the line is replaced by its alias, then the first word

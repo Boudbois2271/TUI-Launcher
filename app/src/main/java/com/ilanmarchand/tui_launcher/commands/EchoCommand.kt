@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.commands
 
 // bash's echo: echo [-neE] [ARG]...  With -e, \n, \t and \\ mean a new line, a tab and a backslash.

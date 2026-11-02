@@ -16,3 +16,10 @@ local.properties
 
 # Copy of ~/.android/debug.keystore, kept next to the project as a backup. It signs the app, so it stays out of git.
 debug.keystore
+
+# Private, local only: machine paths, session state, handoff notes
+CLAUDE.local.md
+# Personal phone test checklist
+PLAN.md
+# Copy of the phone's command log, pulled with adb
+terminal-log.txt

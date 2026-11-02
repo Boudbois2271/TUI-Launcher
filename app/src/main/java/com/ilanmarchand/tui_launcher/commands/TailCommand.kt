@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.commands
 
 // GNU tail: tail [-n [+]NUM] [-NUM] [FILE...]  The last 10 lines by default; -n +NUM starts at line NUM.

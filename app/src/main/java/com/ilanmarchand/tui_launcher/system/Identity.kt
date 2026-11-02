@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.system
 
 // Who and where the terminal says it is: the prompt, whoami, hostname and fastfetch's title agree

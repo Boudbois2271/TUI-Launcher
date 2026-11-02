@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ilanmarchand.tui_launcher.commands
 
 // GNU tr: tr [-cds] SET1 [SET2]  Translates, deletes (-d) or squeezes (-s) characters of the piped-in text,
