@@ -4,10 +4,9 @@ Things touched but not finished, known issues, and doubts. Remove an entry once 
 
 ## Keyboard contract (TUI-Keyboard)
 
-- Only Tab and the arrow keys from `TUIKBfnsignals.md` are handled in the prompt. Not yet handled:
-  Ctrl+letter (Ctrl+A/C/R/V/X in the prompt and in nano), Esc, Home/End, PgUp/PgDn, Del.
-- Keys Compose doesn't use (Esc, Tab, arrows, PgUp/PgDn, Enter) can move focus out of the text field,
-  which hides the keyboard. A fix is in progress.
+- Handled from `TUIKBfnsignals.md`: Tab and the arrows in the prompt, the arrows in nano, and Ctrl+C at
+  nano's save question. Not yet handled: Ctrl+letter elsewhere (Ctrl+A/C/R/V/X in the prompt and in
+  nano), Esc, Home/End, PgUp/PgDn, Del. Unused keys are taken so they don't hide the keyboard.
 - The keyboard drops Shift when Ctrl is held, so Ctrl+Shift+letter can't be told apart from
   Ctrl+letter.
 
@@ -31,14 +30,17 @@ Things touched but not finished, known issues, and doubts. Remove an entry once 
 - `uptime`'s load average and `uname`'s kernel version depend on Android letting the app read
   `/proc/loadavg` and `/proc/version`.
 - `wpctl` controls media volume only, in Android's 15 steps.
+- Going home from MIUI's Notes app leaves the keyboard closed; Notes seems to hide it after the
+  launcher is in front. Other apps are fine.
+- Coming back to the launcher, the prompt line jumps up, down, then up again before the keyboard
+  settles.
 - Several features need device owner or the accessibility service. Without them the commands say
   so instead of working.
 
 ## Not verified on a device
 
-- Pasting two lines at once (should run two commands).
 - Font size and general feel, only checked over adb screenshots.
-- Ctrl from TUI-Keyboard: `adb input` can't hold one key while tapping another.
+- Ctrl from TUI-Keyboard beyond Ctrl+C in nano: `adb input` can't hold one key while tapping another.
 - Only tested on one phone (Redmi Note 9T, Android 11, MIUI). Other Android versions or skins may
   differ, especially around device owner, Wi-Fi and storage permissions.
 
