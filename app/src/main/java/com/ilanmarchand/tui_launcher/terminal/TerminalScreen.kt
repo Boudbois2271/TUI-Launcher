@@ -56,12 +56,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.text.SpanStyle
@@ -69,12 +71,11 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.input.TransformedText
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.ilanmarchand.tui_launcher.aliases.AliasStore
 import com.ilanmarchand.tui_launcher.aliases.expandAliases
 import com.ilanmarchand.tui_launcher.apps.LaunchableApp
@@ -189,6 +190,18 @@ fun TerminalScreen() {
     // Back in the terminal (at start, or after nano), the prompt takes the keyboard
     LaunchedEffect(editing) {
         if (editing == null) focusRequester.requestFocus()
+    }
+
+    // Back on the home screen (Home pressed in another app, or an app closed), the prompt takes focus again.
+    // Android then shows the keyboard itself, since the window asks for it (stateAlwaysVisible in the manifest);
+    // showing it from here raced with the other app's keyboard closing.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && editing == null) focusRequester.requestFocus()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Shows what a command did, on the main thread
@@ -344,13 +357,18 @@ fun TerminalScreen() {
         }
     }
 
-    // The soft keyboard's Tab and arrows, as the prompt's key codes
-    fun promptKey(keyCode: Int) {
-        when (keyCode) {
-            KeyEvent.KEYCODE_TAB -> complete()
-            KeyEvent.KEYCODE_DPAD_UP -> recallHistory(older = true)
-            KeyEvent.KEYCODE_DPAD_DOWN -> recallHistory(older = false)
+    // The soft keyboard's Tab, Up and Down: taken on press and release, acted on at the press. Only the prompt
+    // takes them; nano keeps them.
+    fun promptKey(event: KeyEvent): Boolean {
+        if (event.keyCode !in promptKeyCodes) return false
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_TAB -> complete()
+                KeyEvent.KEYCODE_DPAD_UP -> recallHistory(older = true)
+                KeyEvent.KEYCODE_DPAD_DOWN -> recallHistory(older = false)
+            }
         }
+        return true
     }
 
     editing?.let { edit ->
@@ -366,6 +384,8 @@ fun TerminalScreen() {
         modifier = Modifier
             // Back interrupts a running command with one press, like Ctrl+C, and never hides the keyboard
             .backKeepsKeyboard { jobs.toList().forEach { it.cancel() } }
+            // Esc and the other keys the prompt does not use never take focus from it
+            .keysKeepFocus()
             .promptKeys(
                 onTab = { complete() },
                 onUp = { recallHistory(older = true) },
@@ -391,13 +411,19 @@ fun TerminalScreen() {
                 TerminalLineText(line)
             }
         }
-        TerminalKeyboard(onPromptKey = ::promptKey) {
+        TerminalKeyboard(takeKey = ::promptKey) {
             BasicTextField(
                 value = fieldValue,
                 // The field holds several lines so a long command wraps under the prompt. A new line, from
                 // Enter on a hardware keyboard or from pasted text, submits instead: like bash, each pasted
                 // line runs as its own command.
                 onValueChange = { typed ->
+                    // Enter typed anywhere in the line (a single new line added) runs the whole line, as in bash
+                    if (typed.text.count { it == '\n' } == 1 && typed.text.replace("\n", "") == fieldValue.text) {
+                        submit(fieldValue.text)
+                        fieldValue = TextFieldValue()
+                        return@BasicTextField
+                    }
                     val lines = typed.text.split('\n')
                     lines.dropLast(1).forEach(::submit)
                     fieldValue = if (lines.size == 1) typed else TextFieldValue(lines.last(), TextRange(lines.last().length))
@@ -411,8 +437,9 @@ fun TerminalScreen() {
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = TerminalForeground),
                 cursorBrush = SolidColor(Color.Transparent),
                 // Like bash, no prompt while a command runs; what is typed meanwhile runs after it
-                visualTransformation = remember(question, jobs.isEmpty()) {
-                    promptAndCursor(question?.question ?: PROMPT.takeIf { jobs.isEmpty() })
+                visualTransformation = remember(question, jobs.isEmpty(), fieldValue.selection.start) {
+                    val prompt = (question?.question ?: PROMPT.takeIf { jobs.isEmpty() })?.let { "$it " }.orEmpty()
+                    blockCursorAt(fieldValue.selection.start, prompt)
                 },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
@@ -441,6 +468,18 @@ internal fun Modifier.backKeepsKeyboard(onBack: () -> Unit): Modifier =
         isBack
     }
 
+// The keys Compose turns into a focus move when the text field leaves them unused: Esc moves focus out of the
+// field, and Tab, the arrows, Page Up and Down and Enter move it to another focusable, such as the clickable
+// screen. The field then loses focus and the keyboard hides. Put on a parent of the field, this sees a key only
+// after the field had it, and takes it, so focus stays and the keyboard stays up.
+private val focusMoveKeys = setOf(
+    Key.Escape, Key.Back, Key.Tab, Key.NavigatePrevious, Key.NavigateNext,
+    Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown, Key.DirectionCenter,
+    Key.PageUp, Key.PageDown, Key.Enter, Key.NumPadEnter
+)
+
+internal fun Modifier.keysKeepFocus(): Modifier = onKeyEvent { it.key in focusMoveKeys }
+
 // Takes every press before the text field sees it, so it starts no text selection, no drag handle and no
 // magnifier. The field still types; only its own press gestures are lost.
 internal fun Modifier.noTextSelection(): Modifier = pointerInput(Unit) {
@@ -460,7 +499,8 @@ private object NoTextContextMenu : TextContextMenuProvider {
 // The field stays editable; the handle is only hidden. The context menu is replaced by NoTextContextMenu.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun TerminalKeyboard(multiLine: Boolean = false, onPromptKey: ((Int) -> Unit)? = null, content: @Composable () -> Unit) {
+// takeKey sees the soft keyboard's key events before the field; it returns true for the ones it takes.
+internal fun TerminalKeyboard(multiLine: Boolean = false, takeKey: ((KeyEvent) -> Boolean)? = null, content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalTextSelectionColors provides TextSelectionColors(
             handleColor = Color.Transparent,
@@ -469,14 +509,14 @@ internal fun TerminalKeyboard(multiLine: Boolean = false, onPromptKey: ((Int) ->
         LocalTextContextMenuDropdownProvider provides NoTextContextMenu,
         LocalTextContextMenuToolbarProvider provides NoTextContextMenu
     ) {
-        TerminalKeyboardInput(multiLine, onPromptKey, content)
+        TerminalKeyboardInput(multiLine, takeKey, content)
     }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun TerminalKeyboardInput(multiLine: Boolean, onPromptKey: ((Int) -> Unit)?, content: @Composable () -> Unit) {
-    val currentOnPromptKey by rememberUpdatedState(onPromptKey)
+private fun TerminalKeyboardInput(multiLine: Boolean, takeKey: ((KeyEvent) -> Boolean)?, content: @Composable () -> Unit) {
+    val currentTakeKey by rememberUpdatedState(takeKey)
     InterceptPlatformTextInput(
         interceptor = { request, nextHandler ->
             val terminalRequest = PlatformTextInputMethodRequest { outAttributes ->
@@ -488,8 +528,7 @@ private fun TerminalKeyboardInput(multiLine: Boolean, onPromptKey: ((Int) -> Uni
                     outAttributes.imeOptions = outAttributes.imeOptions or
                         EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or
                         (if (multiLine) EditorInfo.IME_FLAG_NO_ENTER_ACTION else 0)
-                    // Only the prompt takes Tab and the arrows; nano keeps them
-                    currentOnPromptKey?.let { onKey -> PromptKeyInput(base) { onKey(it) } } ?: base
+                    KeyTakingInput(base) { event -> currentTakeKey?.invoke(event) ?: false }
                 }
             }
             nextHandler.startInputMethod(terminalRequest)
@@ -565,24 +604,4 @@ private fun TerminalLineText(line: TerminalLine) {
             }
         )
     }
-}
-
-// The prompt (none while a command runs), drawn inside the field so a long command wraps onto the next line from the left edge, like
-// in a real terminal, then the typed text and a static block cursor. The field's own cursor is hidden
-// because it blinks, and there are no animations yet.
-private fun promptAndCursor(promptText: String?) = VisualTransformation { text ->
-    val prompt = promptText?.let { "$it " }.orEmpty()
-    TransformedText(
-        buildAnnotatedString {
-            withStyle(SpanStyle(color = Accent1)) { append(prompt) }
-            append(text)
-            withStyle(SpanStyle(background = TerminalForeground, color = TerminalBackground)) {
-                append(" ")
-            }
-        },
-        object : OffsetMapping {
-            override fun originalToTransformed(offset: Int) = offset + prompt.length
-            override fun transformedToOriginal(offset: Int) = (offset - prompt.length).coerceIn(0, text.length)
-        }
-    )
 }

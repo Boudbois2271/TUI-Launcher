@@ -28,15 +28,11 @@ internal fun Modifier.promptKeys(onTab: () -> Unit, onUp: () -> Unit, onDown: ()
     }
 
 // The keys the prompt takes for itself. The soft keyboard sends them as key events on the input connection,
-// which does not pass through the key modifier above, so PromptKeyInput takes them there.
+// which does not pass through the key modifier above, so KeyTakingInput takes them there.
 internal val promptKeyCodes = setOf(KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN)
 
-// Wraps the input connection the keyboard types into. Its key events for the prompt keys are taken, on both the
-// press and the release, and onKey runs on the press. Other key events go on to the field, as before.
-internal class PromptKeyInput(base: InputConnection, private val onKey: (Int) -> Unit) : InputConnectionWrapper(base, false) {
-    override fun sendKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode !in promptKeyCodes) return super.sendKeyEvent(event)
-        if (event.action == KeyEvent.ACTION_DOWN) onKey(event.keyCode)
-        return true
-    }
+// Wraps the input connection the keyboard types into. Each key event goes to take first; the ones it takes
+// (it returns true) stop there, the others go on to the field, as before.
+internal class KeyTakingInput(base: InputConnection, private val take: (KeyEvent) -> Boolean) : InputConnectionWrapper(base, false) {
+    override fun sendKeyEvent(event: KeyEvent): Boolean = take(event) || super.sendKeyEvent(event)
 }

@@ -33,6 +33,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -45,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.ilanmarchand.tui_launcher.commands.CommandResult
 import com.ilanmarchand.tui_launcher.files.nanoLineCount
 import com.ilanmarchand.tui_launcher.files.nanoLines
+import com.ilanmarchand.tui_launcher.ui.theme.Accent1
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalBackground
 import com.ilanmarchand.tui_launcher.ui.theme.TerminalForeground
 import kotlinx.coroutines.launch
@@ -81,7 +88,17 @@ fun NanoScreen(edit: CommandResult.Edit, save: suspend (String) -> String?, onEx
         }
     }
 
-    fun exit() = if (modified) askingToSave = true else onExit()
+    fun cancelSave() {
+        askingToSave = false
+        status = "[ Cancelled ]"
+    }
+
+    // Back at the save question cancels it, as ^C does
+    fun exit() = when {
+        askingToSave -> cancelSave()
+        modified -> askingToSave = true
+        else -> onExit()
+    }
 
     BackHandler { exit() }
 
@@ -89,6 +106,14 @@ fun NanoScreen(edit: CommandResult.Edit, save: suspend (String) -> String?, onEx
         modifier = Modifier
             // Back leaves nano and never hides the keyboard
             .backKeepsKeyboard { exit() }
+            // Esc and the other keys nano does not use never take focus from the text
+            .keysKeepFocus()
+            // Ctrl+C at the save question cancels it (a hardware keyboard; the soft keyboard's is taken below)
+            .onPreviewKeyEvent { event ->
+                val ctrlC = askingToSave && event.isCtrlPressed && event.key == Key.C
+                if (ctrlC && event.type == KeyEventType.KeyDown) cancelSave()
+                ctrlC
+            }
             .fillMaxSize()
             .background(TerminalBackground)
             .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -103,10 +128,25 @@ fun NanoScreen(edit: CommandResult.Edit, save: suspend (String) -> String?, onEx
             Text(edit.name, color = TerminalBackground, modifier = Modifier.align(Alignment.Center))
             if (modified) Text("Modified", color = TerminalBackground, modifier = Modifier.align(Alignment.CenterEnd))
         }
-        TerminalKeyboard(multiLine = true) {
+        // The soft keyboard's Ctrl+C at the save question cancels it, on the press; the release is taken too
+        TerminalKeyboard(multiLine = true, takeKey = { event ->
+            val ctrlC = askingToSave && event.isCtrlPressed && event.keyCode == android.view.KeyEvent.KEYCODE_C
+            if (ctrlC && event.action == android.view.KeyEvent.ACTION_DOWN) cancelSave()
+            ctrlC
+        }) {
             BasicTextField(
                 value = value,
                 onValueChange = {
+                    if (askingToSave) {
+                        // As in nano, the question takes the keys: Y or N answers, anything else is ignored and
+                        // the text is left as it was
+                        val answer = if (it.text.length == value.text.length + 1) it.text.getOrNull(it.selection.start - 1) else null
+                        when (answer?.lowercaseChar()) {
+                            'y' -> writeOut(thenExit = true)
+                            'n' -> onExit()
+                        }
+                        return@BasicTextField
+                    }
                     value = it
                     status = ""
                 },
@@ -139,10 +179,7 @@ fun NanoScreen(edit: CommandResult.Edit, save: suspend (String) -> String?, onEx
                 listOf(
                     Shortcut("Y", "Yes") { writeOut(thenExit = true) },
                     Shortcut("N", "No", onExit),
-                    Shortcut("^C", "Cancel") {
-                        askingToSave = false
-                        status = "[ Cancelled ]"
-                    }
+                    Shortcut("^C", "Cancel", ::cancelSave)
                 )
             )
         } else {
@@ -183,12 +220,15 @@ private fun ShortcutBar(shortcuts: List<Shortcut>) {
     }
 }
 
-// A still block cursor on the character at `position`, or after the text at its end
-private fun blockCursorAt(position: Int) = VisualTransformation { text ->
+// A still block cursor on the character at `position`, or after the text at its end. The field's own cursor is
+// hidden because it blinks, and there are no animations. `prompt`, if any, is drawn first in the accent colour,
+// inside the field, so a long line wraps onto the next line from the left edge, as in a real terminal.
+internal fun blockCursorAt(position: Int, prompt: String = "") = VisualTransformation { text ->
     val cursor = SpanStyle(background = TerminalForeground, color = TerminalBackground)
     val atEnd = position >= text.length
     TransformedText(
         buildAnnotatedString {
+            withStyle(SpanStyle(color = Accent1)) { append(prompt) }
             append(text.text.take(position))
             // At a line end the block sits on a space before the newline, which shifts nothing after it
             val under = text.text.getOrNull(position)
@@ -207,11 +247,14 @@ private fun blockCursorAt(position: Int) = VisualTransformation { text ->
         object : OffsetMapping {
             // The extra space only exists before a newline or at the end, right where the cursor is
             private val extra = atEnd || text.text.getOrNull(position) == '\n'
-            override fun originalToTransformed(offset: Int) = if (extra && offset > position) offset + 1 else offset
-            override fun transformedToOriginal(offset: Int) = when {
-                !extra -> offset.coerceAtMost(text.length)
-                offset > position -> (offset - 1).coerceAtMost(text.length)
-                else -> offset
+            override fun originalToTransformed(offset: Int) =
+                prompt.length + if (extra && offset > position) offset + 1 else offset
+            override fun transformedToOriginal(offset: Int) = (offset - prompt.length).coerceAtLeast(0).let {
+                when {
+                    !extra -> it.coerceAtMost(text.length)
+                    it > position -> (it - 1).coerceAtMost(text.length)
+                    else -> it
+                }
             }
         }
     )
