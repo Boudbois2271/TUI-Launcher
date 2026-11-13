@@ -29,12 +29,21 @@ Fn is a tap to lock, or a hold that lasts while pressed. The layout is in `Layou
 | Z row, left | ⇧ Shift | none, toggles the one-shot Shift state | none |
 | Z row, right | ⌫ Backspace | key `KEYCODE_DEL`, repeats every 50 ms after 400 ms held | key `KEYCODE_DEL`, no Ctrl (Ctrl ignored) |
 | Bottom, Enter | ⏎ | key `KEYCODE_ENTER` | key `KEYCODE_ENTER` + Ctrl |
-| Bottom, Space | space | text `" "` | text `" "` (Ctrl ignored) |
+| Bottom, Space | emojis | none, opens the emoji page | none |
 | Bottom, Ctrl | Ctrl | none, holds Ctrl | none |
 | Bottom, Fn | Fn | none, layer toggle | none |
 | Bottom, Sym | Sym | none, switches to the Sym layer | none |
 
-The digit row is blank in Fn. Fn sends no text except the space bar.
+The digit row is blank in Fn. Fn sends no text.
+
+## Emoji page
+
+Opened with Fn + Space (the key reads `emojis`). Tapping `emojis` again goes back to Fn; tapping Fn goes back to letters.
+
+- Each emoji: text, `commitText(emoji, 1)`. Ctrl is ignored.
+- ◀ ▶ flip pages and send nothing. ⌫, ⏎, Ctrl and Sym do what they do in the base layer.
+
+The keyboard always reopens on letters, Shift off, whatever page it was closed on.
 
 ## Ctrl combinations
 
@@ -55,6 +64,5 @@ Ctrl is hold-to-combine. It is set on press and cleared on release. It applies t
 Notes:
 
 - Ctrl + letter is only the key event. The app has to turn `KEYCODE_x` + Ctrl meta into Ctrl+x. That includes Ctrl+A/C/R/V/X in the launcher's text field and in nano.
-- `Layout.kt` says Fn "never types text", but Space in Fn commits `" "`. Decide whether this is a bug or intended.
 - Ctrl+Shift+letter drops Shift, so Ctrl+Shift+C arrives as Ctrl+C. The app will not see Ctrl+Shift+C.
 - Ctrl hold has not been tested on the phone, because `adb input` cannot hold one key while tapping another.
